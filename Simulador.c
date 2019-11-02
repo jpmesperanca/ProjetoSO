@@ -6,17 +6,56 @@
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include <sys/fcntl.h>
-#include <semaphore.h> // include POSIX semaphores
+#include <semaphore.h> 
 #include <pthread.h>
 
+typedef struct sharedMemStruct{
 
-int main(){
-	printf("Hello World");
-	pid_t torreControlo=fork();
-	if(torreControlo==0){
-		smth();
+	// Insert code here lmao
+
+} sharedMem;
+
+void controlTower();
+void flightManager();
+
+int inputPipe[2];
+int
+int main() {
+	
+	pipe(inputPipe);
+
+	if ((shmid = shmget(IPC_PRIVATE, sizeof(sharedMem), IPC_CREAT | 0700)) == -1) {
+		perror("Error creating shared memory\n");
+		exit(1);
 	}
-	else{
-		smthelse();
+
+	if ((shared_var = shmat(shmid, NULL, 0)) <= 0) {
+		perror("Error in shmat\n");
+		exit(1);
 	}
+
+
+	if (fork() == 0){
+		controlTower();
+		exit(0);
+	}
+	
+	flightManager();
+	
+	wait(NULL);
+
+	//closing
+	shmctl(shmid,IPC_RMID,NULL);
+	
+	return 0;
+}
+
+
+void controlTower() {
+
+}
+
+
+void flightManager() {
+
 }
