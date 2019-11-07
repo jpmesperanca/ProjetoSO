@@ -1,0 +1,5 @@
+dar unlink ao pipe antes de o criar
+abrir o pipe com rdwr para evitar o broken pipe e ter 2 pontas abertas
+criar um script para mandar voos
+enviar com o:
+	echo "msg" > pipeName
