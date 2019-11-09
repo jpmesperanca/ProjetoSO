@@ -10,6 +10,7 @@
 #include <pthread.h>
 #include <regex.h>
 #include <stdbool.h>
+#include <sys/msg.h>
 #include <errno.h>
 #include <signal.h>
 #include <fcntl.h>
@@ -19,8 +20,8 @@
 #define CINQ 50
 #define CEM 100
 #define PIPE_NAME "input_pipe"
-#define ARRIVAL_PATTERN  "ARRIVAL TP[0-9]+ init:[0-9]+ eta:[0-9]+ fuel:[0-9]+"
-#define DEPARTURE_PATTERN "DEPARTURE TP[0-9]+ init:[0-9]+ takeoff:[0-9]+"
+#define ARRIVAL_PATTERN  "ARRIVAL TP[0-9]+ init: [0-9]+ eta: [0-9]+ fuel: [0-9]+"
+#define DEPARTURE_PATTERN "DEPARTURE TP[0-9]+ init: [0-9]+ takeoff: [0-9]+"
 
 typedef struct sharedMemStruct{
 
@@ -54,6 +55,15 @@ typedef struct departureNode{
 
 } departureStruct;
 
+typedef struct messageQueue* messageQueuePtr;
+typedef struct messageQueue{
+
+  long messageType;
+
+  char* message;
+  int shmSlot; 
+
+} messageStruct;
 
 typedef struct baseValuesStruct{
 
@@ -83,6 +93,8 @@ void freeArrivals(arrivalPtr arrivalHead);
 void insereArrival(arrivalPtr arrivalHead, char* nome, int init, int eta, int fuel);
 void criarVoo();
 arrivalPtr criaArrivals();
+messageQueuePtr criaMQStruct();
+void testMQ();
 
 void processaDeparture(char* comando, departurePtr departureHead);
 void printDepartures(departurePtr departureHead);
@@ -93,6 +105,9 @@ departurePtr criaDepartures();
 void *timerCount(void* id_ptr);
 //CONFIGVALUES
 valuesStruct* valuesPtr; 
+
+//MESSAGE QUEUE
+int messageQueueID;
 
 //SHARED MEMORY
 int shmid;
@@ -149,6 +164,7 @@ void flightManager() {
 		/* Tenho de criar duas threads para correr o timer o o resto? */
 	criaSharedMemory();
 	criaMessageQueue();
+	testMQ();
 	criaPipe();
 
 	while(condition == 1){
@@ -176,6 +192,7 @@ void flightManager() {
 
 	freeArrivals(arrivalHead);
 	freeDepartures(departureHead);
+	msgctl(messageQueueID, IPC_RMID, 0);
 }
 
 
@@ -195,10 +212,35 @@ void criaSharedMemory(){
 
 void criaMessageQueue(){
 
-	printf("Creating Message Queue\n");
+	messageQueueID = msgget(IPC_PRIVATE, IPC_CREAT | 0777);
 }
 
+void testMQ(){
+	
+	messageQueuePtr enviar = criaMQStruct();
+	messageQueuePtr msgrecebida = criaMQStruct();
 
+	enviar->message = "Test Message";
+	enviar->messageType = 1;
+
+	msgsnd(messageQueueID, enviar, sizeof(messageStruct), 0);
+	sleep(1);
+	msgrcv(messageQueueID, msgrecebida, sizeof(messageStruct), 1, 0);
+
+	printf("MENSAGEM RECEBIDA: %s\n", msgrecebida->message);
+}
+
+messageQueuePtr criaMQStruct(){
+
+	messageQueuePtr new = malloc(sizeof(messageStruct));
+
+	if (new != NULL){
+		new->messageType = -1;
+		new->message = malloc(CINQ*sizeof(char));
+		new->shmSlot = -1;
+	}
+	return new;
+}
 
 void criaPipe(){
 	
@@ -257,7 +299,7 @@ void processaArrival(char* comando, arrivalPtr arrivalHead){
 	int fuel;
 	arrivalPtr aux = arrivalHead;
 
-	sscanf(comando, "ARRIVAL %s init:%d eta:%d fuel:%d", nome, &init, &eta, &fuel);
+	sscanf(comando, "ARRIVAL %s init: %d eta: %d fuel: %d", nome, &init, &eta, &fuel);
 
 	if ((fuel > eta) /*&& (fuel > init)*/) insereArrival(aux,nome,init,eta,fuel);
 }
@@ -269,7 +311,7 @@ void processaDeparture(char* comando, departurePtr departureHead){
 	int takeoff;
 	departurePtr aux = departureHead;
 
-	sscanf(comando, "DEPARTURE %s init:%d takeoff:%d", nome, &init, &takeoff);
+	sscanf(comando, "DEPARTURE %s init: %d takeoff: %d", nome, &init, &takeoff);
 
 	if (1==1/*LATER COM O IF DO TIMING*/) insereDeparture(aux,nome,init,takeoff);
 }
