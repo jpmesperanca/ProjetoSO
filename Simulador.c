@@ -22,16 +22,6 @@
 #define ARRIVAL_PATTERN  "ARRIVAL TP[0-9]+ init:[0-9]+ eta:[0-9]+ fuel:[0-9]+"
 #define DEPARTURE_PATTERN "DEPARTURE TP[0-9]+ init:[0-9]+ takeoff:[0-9]+"
 
-void controlTower();
-void flightManager();
-void readConfig();
-void terminate();
-void criaPipe();
-void criaMessageQueue();
-void criaSharedMemory();
-int validaComando(char* comando, char* padrao);
-void criarVoo();
-
 typedef struct sharedMemStruct{
 
 	int maluck;
@@ -39,24 +29,27 @@ typedef struct sharedMemStruct{
 
 } memStruct;
 
-typedef struct arrivalFlight{
+
+typedef struct arrivalNode* arrivalPtr;
+typedef struct arrivalNode{
 
 	char* nome;
 	int init; 
 	int eta;
 	int fuel;
 
-	arrivalStruct* nextPtr;
+	arrivalPtr nextNodePtr;
 
 } arrivalStruct;
 
+typedef struct departureNode* departurePtr;
 typedef struct departureFlight{
 
 	char* nome;
 	int init; 
 	int takeoff;
 
-	departureStruct* nextPtr;
+	departurePtr nextNodePtr;
 
 } departureStruct;
 
@@ -74,6 +67,22 @@ typedef struct baseValuesStruct{
 
 } valuesStruct;
 
+void controlTower();
+void flightManager();
+void readConfig();
+void terminate();
+void criaPipe();
+void criaMessageQueue();
+void criaSharedMemory();
+int confirmaSintaxe(char* comando, char* padrao);
+void processaArrival(char* comando, arrivalPtr arrivalHead);
+void printArrivals(arrivalPtr arrivalHead);
+void freeArrivals(arrivalPtr arrivalHead);
+void insereArrival(arrivalPtr arrivalHead, char* nome, int init, int eta, int fuel);
+void criarVoo();
+arrivalPtr criaArrivals();
+
+
 //CONFIGVALUES
 valuesStruct* valuesPtr; 
 
@@ -82,7 +91,7 @@ int shmid;
 memStruct* sharedMemPtr;
 
 //NAMED PIPE
-int fd_named_pipe;
+int fdNamedPipe;
 
 
 int main() {
@@ -118,14 +127,9 @@ void controlTower() {
 void flightManager() {
 
 	int condition = 1;
-	int init;
-	int eta;
-	int fuel;
-	int takeoff;
 	char comando[CINQ];
-	char nome[10];
-	arrivalStruct arrivalFlights;
-	departureStruct departureFlights;
+
+	arrivalPtr arrivalHead = criaArrivals();
 
 	criaSharedMemory();
 	criaMessageQueue();
@@ -133,22 +137,25 @@ void flightManager() {
 
 	while(condition == 1){
 
-		read(fd_named_pipe,&comando,CINQ);
-		comando[strlen(comando)-1] = '\0';
+		read(fdNamedPipe,&comando,CINQ);
+		strtok(comando, "\n");
 
 		if (strcmp(comando,"exit") == 0) condition = 0;
+			
+		else if ((comando[0] == 'A') && (confirmaSintaxe(comando, ARRIVAL_PATTERN) == 1)){
 
-		else if ((comando[0] == 'A') and (validaComando(comando, ARRIVAL_PATTERN) == 1)){
-
-			sscanf(comando, "ARRIVAL, %s init:%d eta:%d fuel:%d", )
+			processaArrival(comando, arrivalHead);
+			printArrivals(arrivalHead);
 		}
 
-		else if ((comando[0] == 'D') and (validaComando(comando, DEPARTURE_PATTERN) == 1)){
-
+		else if ((comando[0] == 'D') && (confirmaSintaxe(comando, DEPARTURE_PATTERN) == 1)){
+			printf("to be completed\n");
 		}
 
-		else printf("ye");//escreve no log mal
+		else printf("*to be completed*\n");//escreve no log mal
 	}
+
+	freeArrivals(arrivalHead);
 }
 
 
@@ -168,7 +175,7 @@ void criaSharedMemory(){
 
 void criaMessageQueue(){
 
-	printf("oi\n");
+	printf("Creating Message Queue\n");
 }
 
 
@@ -181,31 +188,41 @@ void criaPipe(){
 		exit(0);
 	}
 
-	if ((fd_named_pipe = open(PIPE_NAME, O_RDWR)) < 0) {
+	if ((fdNamedPipe = open(PIPE_NAME, O_RDWR)) < 0) {
 		perror("Cannot open pipe for read/write: ");
 		exit(0);
 	}
 }
 
 
-int validaComando(char* comando, char* padrao){
+int confirmaSintaxe(char* comando, char* padrao){
 
 	regex_t expressaoRegular;
 	int returnValue = 0;
-
-	printf("A processar comando\n");
 
     if (regcomp(&expressaoRegular, padrao, REG_EXTENDED) != 0)
         printf("erro a criar a expressao regular");
     
     if (regexec(&expressaoRegular, comando, (size_t) 0, NULL, 0) == 0)
-    	returnValue = 1
+    	returnValue = 1;
     
     regfree(&expressaoRegular);
 
     return returnValue;
 }
 
+void processaArrival(char* comando, arrivalPtr arrivalHead){
+
+	char nome[10];
+	int init;
+	int eta;
+	int fuel;
+	arrivalPtr aux = arrivalHead;
+
+	sscanf(comando, "ARRIVAL %s init:%d eta:%d fuel:%d", nome, &init, &eta, &fuel);
+
+	if ((fuel > eta) && (fuel > init)) insereArrival(aux,nome,init,eta,fuel);
+}
 
 void readConfig() {
 
@@ -242,10 +259,72 @@ void* voos(void* agr){
 
 void terminate(){
 
-	printf("\ntutto finisce..\n");
+	printf("Tutto finisce..\n");
+
 	unlink(PIPE_NAME);
 	remove(PIPE_NAME);
+
 	shmdt(sharedMemPtr);
 	shmctl(shmid,IPC_RMID,NULL);
+
 	printf("Dappertutto!\n");
+}
+
+arrivalPtr criaArrivals(){
+
+    arrivalPtr aux;
+    aux = malloc(sizeof(arrivalStruct));
+
+    if (aux!=NULL){
+
+        aux->nome = malloc(10*sizeof(char));
+        aux->init = -1;
+        aux->eta = -1;
+        aux->fuel = -1;
+        aux->nextNodePtr = NULL;
+    }
+
+    return aux;
+}
+
+void insereArrival(arrivalPtr arrivalHead, char* nome, int init, int eta, int fuel){
+
+    arrivalPtr novo = criaArrivals();
+    arrivalPtr aux = arrivalHead;
+
+    while((aux->nextNodePtr != NULL) && (aux->nextNodePtr->init < init))
+        aux = aux->nextNodePtr;
+
+    novo->nextNodePtr = aux->nextNodePtr;
+    aux->nextNodePtr = novo;
+
+    strcpy(novo->nome, nome);
+    novo->init = init;
+    novo->eta = eta;
+    novo->fuel = fuel;
+}
+
+void freeArrivals(arrivalPtr arrivalHead){
+
+    arrivalPtr aux = arrivalHead->nextNodePtr;
+
+        while(arrivalHead != NULL){
+
+            free(arrivalHead->nome);
+            aux = arrivalHead->nextNodePtr;
+            free(arrivalHead);
+            arrivalHead = aux;
+        }
+}
+
+void printArrivals(arrivalPtr arrivalHead){
+
+	arrivalPtr aux = arrivalHead->nextNodePtr;
+
+        while(aux != NULL){
+
+        	printf("Voo:%s, init:%d, eta:%d, fuel:%d\n", aux->nome, aux->init, aux->eta, aux->fuel);
+        	aux = aux->nextNodePtr;
+        } 
+    printf("------\n");
 }

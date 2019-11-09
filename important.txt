@@ -5,5 +5,8 @@ enviar com o:
 	echo "msg" > pipeName
 
 
-init < time | fuel < eta | fuel < ini | ... <- condicoes para ver se o comando é aceite
+init < time | fuel < eta | fuel < ini | ... <- condicoes para ver se o comando é aceite 
+
+!!! AINDA NAO FIZ O TIME NO PROCESSA ARRIVAL !!!
+
 correr uma thread separada e dividir pela unidade de tempo
