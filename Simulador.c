@@ -101,14 +101,15 @@ pthread_t comparatorThread;
 //PTHREADS ARRIVALS
 pthread_mutex_t arrivalMutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_t arrivalThread[LIMVOO];
-//int arrivalId[LIMVOO];
+int sizeArrivals;
 
 //PTHREADS DEPARTURES
 pthread_mutex_t departureMutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_t departureThread[LIMVOO];
-//int departureId[LIMVOO];
+int sizeDepartures;
 
-
+//Exit Condition
+int condition = 1;
 
 //LISTA LIGADAS
 arrivalPtr arrivalHead;
@@ -146,7 +147,6 @@ void controlTower() {
 
 void flightManager() {
 
-	int condition = 1;
 	char comando[CINQ];
 
 	arrivalHead = criaArrivals();
@@ -258,24 +258,23 @@ void *timerCount(void* unused){
 	int idTime = 0;
 	int timer;
 	*/
- 	while(1){
- 		usleep((valuesPtr->unidadeTempo-5)*1000);
+ 	while(condition){
+ 		usleep((valuesPtr->unidadeTempo)*1000);
  		pthread_mutex_lock(&timeMutex);
  		timer++;
  		pthread_mutex_unlock(&timeMutex);
  		printf("Unidade de Tempo %d\n",timer);
  	}
-
+ 	pthread_exit(0);
  }
 
  void *timeComparator(void* unused){
  	int i = 0;
  	int j = 0;
 	
-	arrivalPtr arrivalAux = arrivalHead->nextNodePtr;
-	departurePtr departureAux = departureHead->nextNodePtr; 
- 
-	while(1){
+	while(condition){
+	   	arrivalPtr arrivalAux = arrivalHead->nextNodePtr;
+		departurePtr departureAux = departureHead->nextNodePtr; 
 	   	while(arrivalAux!= NULL){
 	   		pthread_mutex_lock(&timeMutex);
 	   		if (arrivalAux->init == timer && arrivalAux->created == 0){
@@ -299,12 +298,15 @@ void *timerCount(void* unused){
 	   		}
 	   		else {
 	   			pthread_mutex_unlock(&timeMutex);
-	   			if(arrivalAux->init > timer)break;
+	   			if(departureAux->init > timer)break;
 	   		}
 	   		departureAux=departureAux->nextNodePtr;
 	    }
 
 	}
+	sizeArrivals = i;
+	sizeDepartures = j;
+	pthread_exit(0);
  }
 
 int confirmaSintaxe(char* comando, char* padrao){
@@ -333,7 +335,7 @@ void processaArrival(char* comando, arrivalPtr arrivalHead){
 
 	sscanf(comando, "ARRIVAL %s init: %d eta: %d fuel: %d", nome, &init, &eta, &fuel);
 
-	if ((fuel > eta) /*&& (fuel > init)*/) insereArrival(aux,nome,init,eta,fuel);
+	if ((fuel > eta && timer<=init) /*&& (fuel > init)*/) insereArrival(aux,nome,init,eta,fuel);
 }
 
 void processaDeparture(char* comando, departurePtr departureHead){
@@ -345,7 +347,7 @@ void processaDeparture(char* comando, departurePtr departureHead){
 
 	sscanf(comando, "DEPARTURE %s init: %d takeoff: %d", nome, &init, &takeoff);
 
-	if (1==1/*LATER COM O IF DO TIMING*/) insereDeparture(aux,nome,init,takeoff);
+	if (timer<=init) insereDeparture(aux,nome,init,takeoff);
 }
 
 void readConfig() {
@@ -387,13 +389,22 @@ void terminate(){
 
 	printf("Tutto finisce..\n");
 
+	pthread_join(timeThread,NULL);
+	pthread_join(comparatorThread,NULL);
+	
+	for(int i=0;i<sizeArrivals;i++){
+		pthread_join(arrivalThread[i],NULL);
+	}
+
+	for(int i=0;i<sizeDepartures;i++){
+		pthread_join(departureThread[i],NULL);
+	}
+
 	unlink(PIPE_NAME);
 	remove(PIPE_NAME);
 
 	shmdt(sharedMemPtr);
 	shmctl(shmid,IPC_RMID,NULL);
-
-	pthread_join(timeThread,NULL);
 
 	printf("Dappertutto!\n");
 }
