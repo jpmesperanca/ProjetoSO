@@ -42,8 +42,9 @@ typedef struct arrivalNode{
 
 } arrivalStruct;
 
+
 typedef struct departureNode* departurePtr;
-typedef struct departureFlight{
+typedef struct departureNode{
 
 	char* nome;
 	int init; 
@@ -52,6 +53,7 @@ typedef struct departureFlight{
 	departurePtr nextNodePtr;
 
 } departureStruct;
+
 
 typedef struct baseValuesStruct{
 
@@ -82,7 +84,13 @@ void insereArrival(arrivalPtr arrivalHead, char* nome, int init, int eta, int fu
 void criarVoo();
 arrivalPtr criaArrivals();
 
+void processaDeparture(char* comando, departurePtr departureHead);
+void printDepartures(departurePtr departureHead);
+void freeDepartures(departurePtr departureHead);
+void insereDeparture(departurePtr departureHead, char* nome, int init, int takeoff);
+departurePtr criaDepartures();
 
+void *timerCount(void* id_ptr);
 //CONFIGVALUES
 valuesStruct* valuesPtr; 
 
@@ -93,6 +101,11 @@ memStruct* sharedMemPtr;
 //NAMED PIPE
 int fdNamedPipe;
 
+//PTHREADS
+pthread_mutex_t timeMutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_t timeThread;
+int idTime = 0;
+int timer = 0;
 
 int main() {
 
@@ -130,7 +143,10 @@ void flightManager() {
 	char comando[CINQ];
 
 	arrivalPtr arrivalHead = criaArrivals();
+	departurePtr departureHead = criaDepartures();
 
+	//pthread_create(&timeThread,NULL,timerCount,&idTime);
+		/* Tenho de criar duas threads para correr o timer o o resto? */
 	criaSharedMemory();
 	criaMessageQueue();
 	criaPipe();
@@ -150,12 +166,16 @@ void flightManager() {
 
 		else if ((comando[0] == 'D') && (confirmaSintaxe(comando, DEPARTURE_PATTERN) == 1)){
 			printf("to be completed\n");
+
+			processaDeparture(comando, departureHead);
+			printDepartures(departureHead);
 		}
 
 		else printf("*to be completed*\n");//escreve no log mal
 	}
 
 	freeArrivals(arrivalHead);
+	freeDepartures(departureHead);
 }
 
 
@@ -179,6 +199,7 @@ void criaMessageQueue(){
 }
 
 
+
 void criaPipe(){
 	
 	unlink(PIPE_NAME);
@@ -194,6 +215,23 @@ void criaPipe(){
 	}
 }
 
+void *timerCount(void* id_ptr){
+ 	/*
+	pthread_mutex_t timeMutex = PTHREAD_MUTEX_INITIALIZER;
+	pthread_t timeThread;
+	int idTime = 0;
+	int timer;
+	*/
+	printf("Thread Criada");
+ 	while(1){
+ 		sleep(valuesPtr->unidadeTempo);
+ 		pthread_mutex_lock(&timeMutex);
+ 		timer++;
+ 		printf("Unidade de Tempo %d\n",timer);
+ 		pthread_mutex_unlock(&timeMutex);
+ 	}
+
+ }
 
 int confirmaSintaxe(char* comando, char* padrao){
 
@@ -221,7 +259,19 @@ void processaArrival(char* comando, arrivalPtr arrivalHead){
 
 	sscanf(comando, "ARRIVAL %s init:%d eta:%d fuel:%d", nome, &init, &eta, &fuel);
 
-	if ((fuel > eta) && (fuel > init)) insereArrival(aux,nome,init,eta,fuel);
+	if ((fuel > eta) /*&& (fuel > init)*/) insereArrival(aux,nome,init,eta,fuel);
+}
+
+void processaDeparture(char* comando, departurePtr departureHead){
+
+	char nome[10];
+	int init;
+	int takeoff;
+	departurePtr aux = departureHead;
+
+	sscanf(comando, "DEPARTURE %s init:%d takeoff:%d", nome, &init, &takeoff);
+
+	if (1==1/*LATER COM O IF DO TIMING*/) insereDeparture(aux,nome,init,takeoff);
 }
 
 void readConfig() {
@@ -266,6 +316,8 @@ void terminate(){
 
 	shmdt(sharedMemPtr);
 	shmctl(shmid,IPC_RMID,NULL);
+
+	pthread_join(timeThread,NULL);
 
 	printf("Dappertutto!\n");
 }
@@ -323,7 +375,67 @@ void printArrivals(arrivalPtr arrivalHead){
 
         while(aux != NULL){
 
-        	printf("Voo:%s, init:%d, eta:%d, fuel:%d\n", aux->nome, aux->init, aux->eta, aux->fuel);
+        	printf("NEW COMMAND=>ARRIVAL %s, init: %d, eta: %d, fuel: %d\n", aux->nome, aux->init, aux->eta, aux->fuel);
+        	aux = aux->nextNodePtr;
+        } 
+    printf("------\n");
+}
+
+
+//DEPARTURES
+
+departurePtr criaDepartures(){
+
+    departurePtr aux;
+    aux = malloc(sizeof(departureStruct));
+
+    if (aux!=NULL){
+
+        aux->nome = malloc(10*sizeof(char));
+        aux->init = -1;
+        aux->takeoff = -1;
+
+    }
+
+    return aux;
+}
+
+void insereDeparture(departurePtr departureHead, char* nome, int init, int takeoff){
+
+    departurePtr novo = criaDepartures();
+    departurePtr aux = departureHead;
+
+    while((aux->nextNodePtr != NULL) && (aux->nextNodePtr->init < init))
+        aux = aux->nextNodePtr;
+
+    novo->nextNodePtr = aux->nextNodePtr;
+    aux->nextNodePtr = novo;
+
+    strcpy(novo->nome, nome);
+    novo->init = init;
+    novo->takeoff = takeoff;
+}
+
+void freeDepartures(departurePtr departureHead){
+
+    departurePtr aux = departureHead->nextNodePtr;
+
+        while(departureHead != NULL){
+
+            free(departureHead->nome);
+            aux = departureHead->nextNodePtr;
+            free(departureHead);
+            departureHead = aux;
+        }
+}
+
+void printDepartures(departurePtr departureHead){
+
+	departurePtr aux = departureHead->nextNodePtr;
+
+        while(aux != NULL){
+
+        	printf("NEW COMMAND=>DEPARTURE %s, init: %d, takeoff: %d\n", aux->nome, aux->init, aux->takeoff);
         	aux = aux->nextNodePtr;
         } 
     printf("------\n");
