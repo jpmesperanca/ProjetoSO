@@ -272,10 +272,10 @@ void *timerCount(void* unused){
  	int i = 0;
  	int j = 0;
 	
+	arrivalPtr arrivalAux = arrivalHead->nextNodePtr;
+	departurePtr departureAux = departureHead->nextNodePtr; 
+ 
 	while(1){
-		arrivalPtr arrivalAux = arrivalHead->nextNodePtr;
-		departurePtr departureAux = departureHead->nextNodePtr; 
-
 	   	while(arrivalAux!= NULL){
 	   		pthread_mutex_lock(&timeMutex);
 	   		if (arrivalAux->init == timer && arrivalAux->created == 0){
@@ -285,7 +285,7 @@ void *timerCount(void* unused){
 	   		}
 	   		else{
 	   			pthread_mutex_unlock(&timeMutex);
-	   			break;
+	   			if(arrivalAux->init > timer)break;
 	   		}
 	   		arrivalAux=arrivalAux->nextNodePtr;
 	    }
@@ -299,7 +299,7 @@ void *timerCount(void* unused){
 	   		}
 	   		else {
 	   			pthread_mutex_unlock(&timeMutex);
-	   			break;
+	   			if(arrivalAux->init > timer)break;
 	   		}
 	   		departureAux=departureAux->nextNodePtr;
 	    }
