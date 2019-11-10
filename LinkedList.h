@@ -11,7 +11,6 @@ typedef struct arrivalNode{
 	int init; 
 	int eta;
 	int fuel;
-	int created;
 
 	arrivalPtr nextNodePtr;
 
@@ -24,7 +23,6 @@ typedef struct departureNode{
 	char* nome;
 	int init; 
 	int takeoff;
-	int created;
 
 	departurePtr nextNodePtr;
 
@@ -37,6 +35,8 @@ void printArrivals(arrivalPtr arrivalHead);
 void freeArrivals(arrivalPtr arrivalHead);
 void insereArrival(arrivalPtr arrivalHead, char* nome, int init, int eta, int fuel);
 void criarVoo();
+void freeArrivalNode(arrivalPtr arrivalHead);
+void removeArrival(arrivalPtr arrivalHead);
 arrivalPtr criaArrivals();
 
 //DEPARTURE
@@ -44,6 +44,7 @@ void processaDeparture(char* comando, departurePtr departureHead);
 void printDepartures(departurePtr departureHead);
 void freeDepartures(departurePtr departureHead);
 void insereDeparture(departurePtr departureHead, char* nome, int init, int takeoff);
+//void removeDeparture(departurePtr departureHead);
 departurePtr criaDepartures();
 
 #endif

@@ -35,7 +35,6 @@ arrivalPtr criaArrivals(){
         aux->init = -1;
         aux->eta = -1;
         aux->fuel = -1;
-        aux->created = 0;
         aux->nextNodePtr = NULL;
     }
 
@@ -65,11 +64,16 @@ void freeArrivals(arrivalPtr arrivalHead){
 
         while(arrivalHead != NULL){
 
-            free(arrivalHead->nome);
             aux = arrivalHead->nextNodePtr;
-            free(arrivalHead);
+            freeArrivalNode(arrivalHead);
             arrivalHead = aux;
         }
+}
+
+void freeArrivalNode(arrivalPtr arrivalHead){
+
+    free(arrivalHead->nome);
+    free(arrivalHead);
 }
 
 void printArrivals(arrivalPtr arrivalHead){
@@ -84,6 +88,14 @@ void printArrivals(arrivalPtr arrivalHead){
     printf("------\n");
 }
 
+void removeArrival(arrivalPtr arrivalHead){
+
+    arrivalPtr aux = arrivalHead->nextNodePtr->nextNodePtr;
+
+    freeArrivalNode(arrivalHead->nextNodePtr);
+
+    arrivalHead->nextNodePtr = aux;
+}
 
 //DEPARTURES
 
@@ -97,7 +109,6 @@ departurePtr criaDepartures(){
         aux->nome = malloc(10*sizeof(char));
         aux->init = -1;
         aux->takeoff = -1;
-        aux->created = 0;
         aux->nextNodePtr=NULL;
 
     }

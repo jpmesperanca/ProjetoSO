@@ -1,12 +1,6 @@
-dar unlink ao pipe antes de o criar
-abrir o pipe com rdwr para evitar o broken pipe e ter 2 pontas abertas
-criar um script para mandar voos
-enviar com o:
-	echo "msg" > pipeName
-
+criar um script para mandar voos para testar tudo melhor mas parece estar td bem
 
 init < time | fuel < eta | fuel < ini | ... <- condicoes para ver se o comando é aceite 
 
-!!! AINDA NAO FIZ O TIME NO PROCESSA ARRIVAL !!!
+printar no log e na consola o mesmo comando ao msm tempo atraves de um mutex
 
-correr uma thread separada e dividir pela unidade de tempo
