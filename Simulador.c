@@ -67,16 +67,19 @@ void criaPipe();
 void criaMessageQueue();
 void criaSharedMemory();
 int confirmaSintaxe(char* comando, char* padrao);
-
+void insertLogfile(char *command, char *status);
+void startLog();
+void endLog();
 
 void *timerCount(void*);
 void *timeComparator(void*);
 void *ArrivalFlight(void* );
 void *DepartureFlight(void* );
 
-
 messageQueuePtr criaMQStruct();
 void testMQ();
+
+
 
 
 //CONFIGVALUES
@@ -99,15 +102,17 @@ int timer = 0;
 pthread_t comparatorThread;
 
 //PTHREADS ARRIVALS
-pthread_mutex_t arrivalMutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t arrivalMutex = PTHREAD_MUTEX_INITIALIZER;	/* ŃOT USED YET*/
 
 pthread_t arrivalThreads[LIMITEVOOS];
 int sizeArrivals = 0;
 
 //PTHREADS DEPARTURES
-pthread_mutex_t departureMutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t departureMutex = PTHREAD_MUTEX_INITIALIZER;	/* ŃOT USED YET*/
 pthread_t departureThreads[LIMITEVOOS];
 int sizeDepartures = 0;
+
+pthread_mutex_t logMutex = PTHREAD_MUTEX_INITIALIZER;
 
 //Exit Condition
 int isActive= 1;
@@ -160,6 +165,7 @@ void flightManager() {
 	criaMessageQueue();
 	//testMQ();
 	criaPipe();
+	startLog();
 
 	while(isActive == 1){
 
@@ -171,17 +177,22 @@ void flightManager() {
 		else if ((comando[0] == 'A') && (confirmaSintaxe(comando, ARRIVAL_PATTERN) == 1)){
 
 			processaArrival(comando, arrivalHead);
-			printArrivals(arrivalHead);
+			//printArrivals(arrivalHead);
+			insertLogfile(comando,"NEW");
 		}
 
 		else if ((comando[0] == 'D') && (confirmaSintaxe(comando, DEPARTURE_PATTERN) == 1)){
 			printf("to be completed\n");
 
 			processaDeparture(comando, departureHead);
-			printDepartures(departureHead);
+			//printDepartures(departureHead);
+			insertLogfile(comando,"NEW");
 		}
 
-		else printf("*to be completed*\n");//escreve no log mal
+		else {
+		//printf("*to be completed*\n");//escreve no log mal
+		insertLogfile(comando,"WRONG");
+		}
 	}
 
 	freeArrivals(arrivalHead);
@@ -281,14 +292,14 @@ void *timerCount(void* unused){
 
 	   	if ((arrivalAux->nextNodePtr != NULL) && (arrivalAux->nextNodePtr->init == timer)){
 
-	   		pthread_create(&arrivalThreads[i++],NULL,ArrivalFlight,NULL);
+	   		pthread_create(&arrivalThreads[i++],NULL,ArrivalFlight,(void *)arrivalAux->nextNodePtr);
 	   		arrivalAux = arrivalAux->nextNodePtr;
 	   		sizeArrivals++;
 	    }
 
 	    if ((departureAux->nextNodePtr != NULL) && (departureAux->nextNodePtr->init == timer)){
 
-	   		pthread_create(&departureThreads[j++],NULL,DepartureFlight,NULL);
+	   		pthread_create(&departureThreads[j++],NULL,DepartureFlight,(void *)arrivalAux->nextNodePtr);
 	   		departureAux = departureAux->nextNodePtr;
 	   		sizeDepartures++;
 	    }
@@ -326,6 +337,7 @@ void processaArrival(char* comando, arrivalPtr arrivalHead){
 	sscanf(comando, "ARRIVAL %s init: %d eta: %d fuel: %d", nome, &init, &eta, &fuel);
 
 	if ((fuel > eta && timer<=init) /*&& (fuel > init)*/) insereArrival(aux,nome,init,eta,fuel);
+	else insertLogfile(comando,"WRONG");
 }
 
 void processaDeparture(char* comando, departurePtr departureHead){
@@ -338,6 +350,8 @@ void processaDeparture(char* comando, departurePtr departureHead){
 	sscanf(comando, "DEPARTURE %s init: %d takeoff: %d", nome, &init, &takeoff);
 
 	if (timer<=init) insereDeparture(aux,nome,init,takeoff);
+	else insertLogfile(comando,"WRONG");
+
 }
 
 void readConfig() {
@@ -361,16 +375,15 @@ void readConfig() {
 }
 
 
-void *ArrivalFlight(void* unused){
-
-	printf("wooshy!A Airplane wants to stop here\n");
+void *ArrivalFlight(void *flight){
+	printf("wooshy!The Airplane %s wants to stop here\n",((arrivalPtr)flight)->nome);
 	pthread_exit(0);
 }
 
 
-void *DepartureFlight(void* unused){
+void *DepartureFlight(void *flight){
 
-	printf("woosh!A Airplane wants to get the f*** out of here\n");
+	printf("woosh!A Airplane %s wants to get the f*** out of here\n",((departurePtr)flight)->nome);
 	pthread_exit(0);
 }
 
@@ -398,5 +411,39 @@ void terminate(){
 	shmdt(sharedMemPtr);
 	shmctl(shmid,IPC_RMID,NULL);
 
+	endLog();
+
 	printf("Dappertutto!\n");
+}
+
+
+void insertLogfile(char *command, char *status){
+	FILE *f;
+	f=fopen("Logfile.txt","a");
+	pthread_mutex_lock(&logMutex);
+	fprintf(f,"xx:xx:xx %s COMMAND => %s\n",status,command);
+	printf("xx:xx:xx %s COMMAND => %s\n",status,command);
+	pthread_mutex_unlock(&logMutex);
+	fclose(f);
+
+}
+
+void startLog(){
+	FILE *f;
+	f=fopen("Logfile.txt","w");
+	pthread_mutex_lock(&logMutex);
+	fprintf(f,"Day XX, xx:xx:xx SIMULATION START\n");
+	printf("Day XX, xx:xx:xx SIMULATION START\n");
+	pthread_mutex_unlock(&logMutex);
+	fclose(f);
+}
+
+void endLog(){
+	FILE *f;
+	f=fopen("Logfile.txt","a");
+	pthread_mutex_lock(&logMutex);
+	fprintf(f, "DAY XX, xx:xx:xx SIMULATION END\n");
+	printf("DAY XX, xx:xx:xx SIMULATION END\n");
+	pthread_mutex_unlock(&logMutex);
+	fclose(f);
 }

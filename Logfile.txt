@@ -1,0 +1,4 @@
+Day XX, xx:xx:xx SIMULATION START
+xx:xx:xx NEW COMMAND => ARRIVAL TP123 init: 8 eta: 10 fuel: 100
+xx:xx:xx WRONG COMMAND => ARRIVAL TP123 init: aaa eta: 10 fuel: 100
+DAY XX, xx:xx:xx SIMULATION END
