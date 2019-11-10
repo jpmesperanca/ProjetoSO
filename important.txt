@@ -3,4 +3,4 @@ criar um script para mandar voos para testar tudo melhor mas parece estar td bem
 init < time | fuel < eta | fuel < ini | ... <- condicoes para ver se o comando é aceite 
 
 printar no log e na consola o mesmo comando ao msm tempo atraves de um mutex
-
+    cada voo individual tem de indicar que foi criado no init certo no log/consola
