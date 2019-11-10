@@ -271,7 +271,7 @@ void *timerCount(void* unused){
  		timer++;
  		pthread_mutex_unlock(&timeMutex);
 
- 		printf("Unidade de Tempo %d\n",timer);
+ 		//printf("Unidade de Tempo %d\n",timer);	/*PRINT TO CHECK SINCRONIZATION*/
 
  	}pthread_exit(0);
  }
@@ -420,10 +420,12 @@ void terminate(){
 void insertLogfile(char *command, char *status){
 	FILE *f;
 	f=fopen("Logfile.txt","a");
+	
 	pthread_mutex_lock(&logMutex);
 	fprintf(f,"xx:xx:xx %s COMMAND => %s\n",status,command);
 	printf("xx:xx:xx %s COMMAND => %s\n",status,command);
 	pthread_mutex_unlock(&logMutex);
+	
 	fclose(f);
 
 }
@@ -431,19 +433,23 @@ void insertLogfile(char *command, char *status){
 void startLog(){
 	FILE *f;
 	f=fopen("Logfile.txt","w");
+
 	pthread_mutex_lock(&logMutex);
 	fprintf(f,"Day XX, xx:xx:xx SIMULATION START\n");
 	printf("Day XX, xx:xx:xx SIMULATION START\n");
 	pthread_mutex_unlock(&logMutex);
+
 	fclose(f);
 }
 
 void endLog(){
 	FILE *f;
 	f=fopen("Logfile.txt","a");
+
 	pthread_mutex_lock(&logMutex);
 	fprintf(f, "DAY XX, xx:xx:xx SIMULATION END\n");
 	printf("DAY XX, xx:xx:xx SIMULATION END\n");
 	pthread_mutex_unlock(&logMutex);
+	
 	fclose(f);
 }
