@@ -100,28 +100,17 @@ pthread_t comparatorThread;
 
 //PTHREADS ARRIVALS
 pthread_mutex_t arrivalMutex = PTHREAD_MUTEX_INITIALIZER;
-<<<<<<< HEAD
+
 pthread_t arrivalThreads[LIMITEVOOS];
-//int arrivalId[LIMITEVOOS];
+int sizeArrivals = 0;
 
 //PTHREADS DEPARTURES
 pthread_mutex_t departureMutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_t departureThreads[LIMITEVOOS];
-//int departureId[LIMITEVOOS];
-
-int isActive = 1;
-=======
-pthread_t arrivalThread[LIMVOO];
-int sizeArrivals;
-
-//PTHREADS DEPARTURES
-pthread_mutex_t departureMutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_t departureThread[LIMVOO];
-int sizeDepartures;
+int sizeDepartures = 0;
 
 //Exit Condition
-int condition = 1;
->>>>>>> c2a26a067c2cb851c923cb213cf2390a31bc81f8
+int isActive= 1;
 
 //LISTA LIGADAS
 arrivalPtr arrivalHead;
@@ -263,32 +252,17 @@ void criaPipe(){
 }
 
 void *timerCount(void* unused){
-<<<<<<< HEAD
 
  	while(isActive == 1){
 
  		usleep((valuesPtr->unidadeTempo)*1000);
-
-=======
- 	/*
-	pthread_mutex_t timeMutex = PTHREAD_MUTEX_INITIALIZER;
-	pthread_t timeThread;
-	int idTime = 0;
-	int timer;
-	*/
- 	while(condition){
- 		usleep((valuesPtr->unidadeTempo)*1000);
->>>>>>> c2a26a067c2cb851c923cb213cf2390a31bc81f8
  		pthread_mutex_lock(&timeMutex);
  		timer++;
  		pthread_mutex_unlock(&timeMutex);
 
  		printf("Unidade de Tempo %d\n",timer);
- 	}
-<<<<<<< HEAD
-=======
- 	pthread_exit(0);
->>>>>>> c2a26a067c2cb851c923cb213cf2390a31bc81f8
+
+ 	}pthread_exit(0);
  }
 
  void *timeComparator(void* unused){
@@ -296,11 +270,12 @@ void *timerCount(void* unused){
  	int i = 0;
  	int j = 0;
 	
-<<<<<<< HEAD
+
 	arrivalPtr arrivalAux = arrivalHead;
 	departurePtr departureAux = departureHead;
 
 	while(isActive == 1){
+
 
 		pthread_mutex_lock(&timeMutex);
 
@@ -308,45 +283,15 @@ void *timerCount(void* unused){
 
 	   		pthread_create(&arrivalThreads[i++],NULL,ArrivalFlight,NULL);
 	   		arrivalAux = arrivalAux->nextNodePtr;
+	   		sizeArrivals++;
 	    }
 
 	    if ((departureAux->nextNodePtr != NULL) && (departureAux->nextNodePtr->init == timer)){
 
 	   		pthread_create(&departureThreads[j++],NULL,DepartureFlight,NULL);
 	   		departureAux = departureAux->nextNodePtr;
-=======
-	while(condition){
-	   	arrivalPtr arrivalAux = arrivalHead->nextNodePtr;
-		departurePtr departureAux = departureHead->nextNodePtr; 
-	   	while(arrivalAux!= NULL){
-	   		pthread_mutex_lock(&timeMutex);
-	   		if (arrivalAux->init == timer && arrivalAux->created == 0){
-	   			pthread_mutex_unlock(&timeMutex);
-	   			pthread_create(&arrivalThread[i++],NULL,ArrivalFlight,NULL);
-	   			arrivalAux->created = 1;
-	   		}
-	   		else{
-	   			pthread_mutex_unlock(&timeMutex);
-	   			if(arrivalAux->init > timer)break;
-	   		}
-	   		arrivalAux=arrivalAux->nextNodePtr;
+	   		sizeDepartures++;
 	    }
-
-	    while(departureAux!= NULL){
-	   		pthread_mutex_lock(&timeMutex);
-	   		if (departureAux->init == timer && departureAux->created == 0){
-	   			pthread_mutex_unlock(&timeMutex);
-	   			pthread_create(&departureThread[j++],NULL,DepartureFlight,NULL);
-	   			departureAux->created = 1;
-	   		}
-	   		else {
-	   			pthread_mutex_unlock(&timeMutex);
-	   			if(departureAux->init > timer)break;
-	   		}
-	   		departureAux=departureAux->nextNodePtr;
->>>>>>> c2a26a067c2cb851c923cb213cf2390a31bc81f8
-	    }
-
 	    pthread_mutex_unlock(&timeMutex);
 	}
 	sizeArrivals = i;
@@ -419,14 +364,14 @@ void readConfig() {
 void *ArrivalFlight(void* unused){
 
 	printf("wooshy!A Airplane wants to stop here\n");
-	pthread_exit(NULL);
+	pthread_exit(0);
 }
 
 
 void *DepartureFlight(void* unused){
 
 	printf("woosh!A Airplane wants to get the f*** out of here\n");
-	pthread_exit(NULL);
+	pthread_exit(0);
 }
 
 
@@ -440,11 +385,11 @@ void terminate(){
 	pthread_join(comparatorThread,NULL);
 	
 	for(int i=0;i<sizeArrivals;i++){
-		pthread_join(arrivalThread[i],NULL);
+		pthread_join(arrivalThreads[i],NULL);
 	}
 
 	for(int i=0;i<sizeDepartures;i++){
-		pthread_join(departureThread[i],NULL);
+		pthread_join(departureThreads[i],NULL);
 	}
 
 	unlink(PIPE_NAME);
@@ -453,11 +398,5 @@ void terminate(){
 	shmdt(sharedMemPtr);
 	shmctl(shmid,IPC_RMID,NULL);
 
-<<<<<<< HEAD
-	pthread_join(timeThread, NULL);
-	pthread_join(comparatorThread, NULL);
-
-=======
->>>>>>> c2a26a067c2cb851c923cb213cf2390a31bc81f8
 	printf("Dappertutto!\n");
 }
