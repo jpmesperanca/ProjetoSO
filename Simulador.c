@@ -73,7 +73,7 @@ void calculaHora();
 void criaSharedMemory();
 int criaPipe();
 int confirmaSintaxe(char* comando, char* padrao);
-void insertLogfile(char *command, char *status);
+void insertLogfile(char *status,char *command);
 void startLog();
 void endLog();
 
@@ -185,7 +185,7 @@ void flightManager() {
 			//printDepartures(sharedMemPtr->departureHead);
 		}
 
-		else insertLogfile(comando,"WRONG");
+		else insertLogfile("WRONG COMMAND =>",comando);
 	}
 
 	freeArrivals(sharedMemPtr->arrivalHead);
@@ -338,11 +338,11 @@ void processaArrival(char* comando){
 
 	if ((fuel >= eta) && (sharedMemPtr->timer<=init)){
 
-		insertLogfile(comando,"NEW");
+		insertLogfile("NEW COMMAND =>",comando);
 		insereArrival(aux,nome,init,eta,fuel);
 	} 
 
-	else insertLogfile(comando,"WRONG");
+	else insertLogfile("WRONG COMMAND =>",comando);
 }
 
 void processaDeparture(char* comando){
@@ -356,10 +356,10 @@ void processaDeparture(char* comando){
 
 	if (sharedMemPtr->timer<=init){
 
+		insertLogfile("NEW COMMAND =>",comando);
 		insereDeparture(aux,nome,init,takeoff);
-		insertLogfile(comando,"NEW");
 	}
-	else insertLogfile(comando,"WRONG");
+	else insertLogfile("WRONG COMMAND =>",comando);
 
 }
 
@@ -387,34 +387,21 @@ void readConfig() {
 
 void *ArrivalFlight(void *flight){
 
-	FILE *f;
 
-	pthread_mutex_lock(&logMutex);
-	printf("%02d:%02d:%02d %s LANDING started\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, ((arrivalPtr)flight)->nome);
-	f=fopen("Logfile.txt","a");
-	fprintf(f,"%02d:%02d:%02d %s LANDING started\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, ((arrivalPtr)flight)->nome);
+	insertLogfile("ARRIVAL STARTED =>",((departurePtr)flight)->nome);
 	usleep((sharedMemPtr->valuesPtr->duracaoAterragem) * (sharedMemPtr->valuesPtr->unidadeTempo) * 1000);
-	fprintf(f,"%02d:%02d:%02d %s LANDING concluded\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, ((arrivalPtr)flight)->nome);
-	fclose(f);
-	printf("%02d:%02d:%02d %s LANDING concluded\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, ((arrivalPtr)flight)->nome);
-	pthread_mutex_unlock(&logMutex);
+	insertLogfile("ARRIVAL CONCLUDED =>",((departurePtr)flight)->nome);
+
 	pthread_exit(0);
 }
 
 
 void *DepartureFlight(void *flight){
 	
-	FILE *f;
-	
-	pthread_mutex_lock(&logMutex);
-	printf("%02d:%02d:%02d %s DEPARTURE started\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, ((departurePtr)flight)->nome);
-	f=fopen("Logfile.txt","a");
-	fprintf(f,"%02d:%02d:%02d %s DEPARTURE started\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, ((departurePtr)flight)->nome);
+	insertLogfile("DEPARTURE STARTED =>",((departurePtr)flight)->nome);
 	usleep((sharedMemPtr->valuesPtr->duracaoDescolagem) * (sharedMemPtr->valuesPtr->unidadeTempo) * 1000);
-	fprintf(f,"%02d:%02d:%02d %s DEPARTURE concluded\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, ((departurePtr)flight)->nome);
-	fclose(f);
-	printf("%02d:%02d:%02d %s DEPARTURE concluded\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, ((departurePtr)flight)->nome);
-	pthread_mutex_unlock(&logMutex);
+	insertLogfile("DEPARTURE CONCLUDED =>",((departurePtr)flight)->nome);
+	
 	pthread_exit(0);
 }
 
@@ -427,7 +414,7 @@ void terminate(){
 
 	pthread_join(timeThread,NULL);
 	pthread_join(comparatorThread,NULL);
-	/*
+	
 	for(int i=0;i<sizeArrivals;i++){
 		pthread_join(arrivalThreads[i],NULL);
 	}
@@ -435,7 +422,7 @@ void terminate(){
 	for(int i=0;i<sizeDepartures;i++){
 		pthread_join(departureThreads[i],NULL);
 	}
-	*/
+
 	unlink(PIPE_NAME);
 	remove(PIPE_NAME);
 
@@ -448,13 +435,13 @@ void terminate(){
 }
 
 
-void insertLogfile(char *command, char *status){
+void insertLogfile(char *status, char *command){
 	FILE *f;
 	f=fopen("Logfile.txt","a");
 	
 	pthread_mutex_lock(&logMutex);
-	fprintf(f,"%02d:%02d:%02d %s COMMAND => %s\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, status, command);
-	printf("%02d:%02d:%02d %s COMMAND => %s\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, status, command);
+	fprintf(f,"%02d:%02d:%02d %s %s\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, status, command);
+	printf("%02d:%02d:%02d %s %s\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, status, command);
 	pthread_mutex_unlock(&logMutex);
 	
 	fclose(f);
