@@ -145,8 +145,10 @@ void controlTower() {
 
 void flightManager() {
 
-	char comando[CINQ];
+	char* comando;
+	char letra;
 	int fdNamedPipe;
+	int i;
 
 	criaSharedMemory();
 	criaMessageQueue();
@@ -167,8 +169,17 @@ void flightManager() {
 
 	while(isActive == 1){
 
-		read(fdNamedPipe,&comando,CINQ);
-		strtok(comando, "\n");
+		i = 0;
+
+		comando = malloc(CINQ*sizeof(char));
+		read(fdNamedPipe,&letra,1);
+
+		while ( letra != '\n') {
+			comando[i++] = letra;
+			read(fdNamedPipe,&letra,1);	
+		}
+		
+		comando[i] = '\0';
 
 		if (strcmp(comando,"exit") == 0) isActive = 0;
 			
@@ -179,7 +190,6 @@ void flightManager() {
 		}
 
 		else if ((comando[0] == 'D') && (confirmaSintaxe(comando, DEPARTURE_PATTERN) == 1)){
-			printf("to be completed\n");
 
 			processaDeparture(comando);
 			//printDepartures(sharedMemPtr->departureHead);
