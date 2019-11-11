@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 #include <unistd.h>
 #include <sys/wait.h>
 #include <sys/types.h>
@@ -10,6 +11,7 @@
 #include <pthread.h>
 #include <regex.h>
 #include <stdbool.h>
+#include <sys/timeb.h>
 #include <sys/msg.h>
 #include <errno.h>
 #include <signal.h>
@@ -26,14 +28,6 @@
 #define DEPARTURE_PATTERN "DEPARTURE TP[0-9]+ init: [0-9]+ takeoff: [0-9]+"
 #define LIMITEVOOS 1000
 
-typedef struct sharedMemStruct{
-
-	int maluck;
-	// Insert code here lmao
-
-} memStruct;
-
-
 
 typedef struct messageQueue* messageQueuePtr;
 typedef struct messageQueue{
@@ -45,6 +39,7 @@ typedef struct messageQueue{
 
 } messageStruct;
 
+typedef struct baseValuesStruct* valuesStructPtr;
 typedef struct baseValuesStruct{
 
 	int unidadeTempo;
@@ -59,17 +54,29 @@ typedef struct baseValuesStruct{
 
 } valuesStruct;
 
+typedef struct sharedMemStruct* memoryPtr;
+typedef struct sharedMemStruct{
+
+	valuesStructPtr valuesPtr; 
+	struct tm * structHoras;
+	int timer;
+	arrivalPtr arrivalHead;
+	departurePtr departureHead;
+
+} memStruct;
+
 void controlTower();
 void flightManager();
 void readConfig();
 void terminate();
-void criaPipe();
-void criaMessageQueue();
+void calculaHora();
 void criaSharedMemory();
+int criaPipe();
 int confirmaSintaxe(char* comando, char* padrao);
 void insertLogfile(char *command, char *status);
 void startLog();
 void endLog();
+
 
 void *timerCount(void*);
 void *timeComparator(void*);
@@ -77,54 +84,41 @@ void *ArrivalFlight(void* );
 void *DepartureFlight(void* );
 
 messageQueuePtr criaMQStruct();
+void criaMessageQueue();
 void testMQ();
 
-
-
-
-//CONFIGVALUES
-valuesStruct* valuesPtr; 
+//Exit Condition
+int isActive= 1;
 
 //MESSAGE QUEUE
 int messageQueueID;
 
 //SHARED MEMORY
+memoryPtr sharedMemPtr;
 int shmid;
-memStruct* sharedMemPtr;
-
-//NAMED PIPE
-int fdNamedPipe;
 
 //PTHREADS
 pthread_mutex_t timeMutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_t timeThread;
-int timer = 0;
 pthread_t comparatorThread;
 
 //PTHREADS ARRIVALS
-pthread_mutex_t arrivalMutex = PTHREAD_MUTEX_INITIALIZER;	/* ŃOT USED YET*/
-
+//pthread_mutex_t arrivalMutex = PTHREAD_MUTEX_INITIALIZER;	/* ŃOT USED YET*/
 pthread_t arrivalThreads[LIMITEVOOS];
 int sizeArrivals = 0;
 
 //PTHREADS DEPARTURES
-pthread_mutex_t departureMutex = PTHREAD_MUTEX_INITIALIZER;	/* ŃOT USED YET*/
+//pthread_mutex_t departureMutex = PTHREAD_MUTEX_INITIALIZER;	/* ŃOT USED YET*/
 pthread_t departureThreads[LIMITEVOOS];
 int sizeDepartures = 0;
 
 pthread_mutex_t logMutex = PTHREAD_MUTEX_INITIALIZER;
 
-//Exit Condition
-int isActive= 1;
-
-//LISTA LIGADAS
-arrivalPtr arrivalHead;
-departurePtr departureHead;
-
 int main() {
 
 	pid_t childPid;
 
+	//signal(SIGINT,forceclose);
 	childPid = fork();
 
 	if (childPid == 0){
@@ -152,19 +146,23 @@ void controlTower() {
 void flightManager() {
 
 	char comando[CINQ];
+	int fdNamedPipe;
 
-	arrivalHead = criaArrivals();
-	departureHead = criaDepartures();
+	criaSharedMemory();
+	criaMessageQueue();
+
+	sharedMemPtr->arrivalHead = criaArrivals();
+	sharedMemPtr->departureHead = criaDepartures();
 
 	readConfig();
 	
 	pthread_create(&timeThread,NULL,timerCount,NULL);
 	pthread_create(&comparatorThread,NULL,timeComparator,NULL);
 	
-	criaSharedMemory();
-	criaMessageQueue();
 	//testMQ();
-	criaPipe();
+
+	fdNamedPipe = criaPipe();
+	calculaHora();
 	startLog();
 
 	while(isActive == 1){
@@ -176,27 +174,22 @@ void flightManager() {
 			
 		else if ((comando[0] == 'A') && (confirmaSintaxe(comando, ARRIVAL_PATTERN) == 1)){
 
-			processaArrival(comando, arrivalHead);
-			//printArrivals(arrivalHead);
-			insertLogfile(comando,"NEW");
+			processaArrival(comando);
+			//printArrivals(sharedMemPtr->arrivalHead);
 		}
 
 		else if ((comando[0] == 'D') && (confirmaSintaxe(comando, DEPARTURE_PATTERN) == 1)){
 			printf("to be completed\n");
 
-			processaDeparture(comando, departureHead);
-			//printDepartures(departureHead);
-			insertLogfile(comando,"NEW");
+			processaDeparture(comando);
+			//printDepartures(sharedMemPtr->departureHead);
 		}
 
-		else {
-		//printf("*to be completed*\n");//escreve no log mal
-		insertLogfile(comando,"WRONG");
-		}
+		else insertLogfile(comando,"WRONG");
 	}
 
-	freeArrivals(arrivalHead);
-	freeDepartures(departureHead);
+	freeArrivals(sharedMemPtr->arrivalHead);
+	freeDepartures(sharedMemPtr->departureHead);
 	msgctl(messageQueueID, IPC_RMID, 0);
 }
 
@@ -247,8 +240,9 @@ messageQueuePtr criaMQStruct(){
 	return new;
 }
 
-void criaPipe(){
+int criaPipe(){
 	
+	int fdNamedPipe;
 	unlink(PIPE_NAME);
 
 	if((mkfifo(PIPE_NAME, O_CREAT | O_EXCL | 0600) < 0) && (errno != EEXIST)){
@@ -260,20 +254,27 @@ void criaPipe(){
 		perror("Cannot open pipe for read/write: ");
 		exit(0);
 	}
+	return fdNamedPipe;
 }
 
 void *timerCount(void* unused){
 
- 	while(isActive == 1){
+	struct timeb tempoStruct, tempoStruct2;
 
- 		usleep((valuesPtr->unidadeTempo)*1000);
+	sharedMemPtr->timer = 0;
+
+	ftime(&tempoStruct);
+
+	while(isActive == 1){
+
  		pthread_mutex_lock(&timeMutex);
- 		timer++;
+ 		ftime(&tempoStruct2);
+ 		sharedMemPtr->timer = (int)(1000*(tempoStruct2.time - tempoStruct.time)+(tempoStruct2.millitm - tempoStruct.millitm))/sharedMemPtr->valuesPtr->unidadeTempo;
+ 		calculaHora();
  		pthread_mutex_unlock(&timeMutex);
-
- 		//printf("Unidade de Tempo %d\n",timer);	/*PRINT TO CHECK SINCRONIZATION*/
-
- 	}pthread_exit(0);
+ 		//usleep(20000);
+ 		//printf("Unidade de Tempo %d\n",sharedMemPtr->timer);	/*PRINT TO CHECK SYNCRONIZATION*/
+ 	}
  }
 
  void *timeComparator(void* unused){
@@ -282,22 +283,22 @@ void *timerCount(void* unused){
  	int j = 0;
 	
 
-	arrivalPtr arrivalAux = arrivalHead;
-	departurePtr departureAux = departureHead;
+	arrivalPtr arrivalAux = sharedMemPtr->arrivalHead;
+	departurePtr departureAux = sharedMemPtr->departureHead;
 
 	while(isActive == 1){
 
 
 		pthread_mutex_lock(&timeMutex);
 
-	   	if ((arrivalAux->nextNodePtr != NULL) && (arrivalAux->nextNodePtr->init == timer)){
+	   	if ((arrivalAux->nextNodePtr != NULL) && (arrivalAux->nextNodePtr->init == sharedMemPtr->timer)){
 
 	   		pthread_create(&arrivalThreads[i++],NULL,ArrivalFlight,(void *)arrivalAux->nextNodePtr);
 	   		arrivalAux = arrivalAux->nextNodePtr;
 	   		sizeArrivals++;
 	    }
 
-	    if ((departureAux->nextNodePtr != NULL) && (departureAux->nextNodePtr->init == timer)){
+	    if ((departureAux->nextNodePtr != NULL) && (departureAux->nextNodePtr->init == sharedMemPtr->timer)){
 
 	   		pthread_create(&departureThreads[j++],NULL,DepartureFlight,(void *)arrivalAux->nextNodePtr);
 	   		departureAux = departureAux->nextNodePtr;
@@ -307,7 +308,6 @@ void *timerCount(void* unused){
 	}
 	sizeArrivals = i;
 	sizeDepartures = j;
-	pthread_exit(0);
  }
 
 int confirmaSintaxe(char* comando, char* padrao){
@@ -326,30 +326,39 @@ int confirmaSintaxe(char* comando, char* padrao){
     return returnValue;
 }
 
-void processaArrival(char* comando, arrivalPtr arrivalHead){
+void processaArrival(char* comando){
 
 	char nome[10];
 	int init;
 	int eta;
 	int fuel;
-	arrivalPtr aux = arrivalHead;
+	arrivalPtr aux = sharedMemPtr->arrivalHead;
 
 	sscanf(comando, "ARRIVAL %s init: %d eta: %d fuel: %d", nome, &init, &eta, &fuel);
 
-	if ((fuel > eta && timer<=init) /*&& (fuel > init)*/) insereArrival(aux,nome,init,eta,fuel);
+	if ((fuel >= eta) && (sharedMemPtr->timer<=init)){
+
+		insertLogfile(comando,"NEW");
+		insereArrival(aux,nome,init,eta,fuel);
+	} 
+
 	else insertLogfile(comando,"WRONG");
 }
 
-void processaDeparture(char* comando, departurePtr departureHead){
+void processaDeparture(char* comando){
 
 	char nome[10];
 	int init;
 	int takeoff;
-	departurePtr aux = departureHead;
+	departurePtr aux = sharedMemPtr->departureHead;
 
 	sscanf(comando, "DEPARTURE %s init: %d takeoff: %d", nome, &init, &takeoff);
 
-	if (timer<=init) insereDeparture(aux,nome,init,takeoff);
+	if (sharedMemPtr->timer<=init){
+
+		insereDeparture(aux,nome,init,takeoff);
+		insertLogfile(comando,"NEW");
+	}
 	else insertLogfile(comando,"WRONG");
 
 }
@@ -357,33 +366,55 @@ void processaDeparture(char* comando, departurePtr departureHead){
 void readConfig() {
 
 	FILE *f;
-	valuesPtr = malloc(sizeof(valuesStruct));
+
+	sharedMemPtr->valuesPtr = malloc(sizeof(valuesStruct));
 
 	if (!(f = fopen("config.txt", "r"))){
 		perror("Error opening file");
 		exit(1);
 	}
 
-	fscanf(f, "%d\n", &valuesPtr->unidadeTempo);
-	fscanf(f, "%d, %d\n", &valuesPtr->duracaoDescolagem, &valuesPtr->intervaloDescolagens);
-	fscanf(f, "%d, %d\n", &valuesPtr->duracaoAterragem, &valuesPtr->intervaloAterragens);
-	fscanf(f, "%d, %d\n", &valuesPtr->minHolding, &valuesPtr->maxHolding);
-	fscanf(f, "%d\n", &valuesPtr->maxPartidas);
-	fscanf(f, "%d\n", &valuesPtr->maxChegadas);
+	fscanf(f, "%d\n", &sharedMemPtr->valuesPtr->unidadeTempo);
+	fscanf(f, "%d, %d\n", &sharedMemPtr->valuesPtr->duracaoDescolagem, &sharedMemPtr->valuesPtr->intervaloDescolagens);
+	fscanf(f, "%d, %d\n", &sharedMemPtr->valuesPtr->duracaoAterragem, &sharedMemPtr->valuesPtr->intervaloAterragens);
+	fscanf(f, "%d, %d\n", &sharedMemPtr->valuesPtr->minHolding, &sharedMemPtr->valuesPtr->maxHolding);
+	fscanf(f, "%d\n", &sharedMemPtr->valuesPtr->maxPartidas);
+	fscanf(f, "%d\n", &sharedMemPtr->valuesPtr->maxChegadas);
 
 	fclose(f);
 }
 
 
 void *ArrivalFlight(void *flight){
-	printf("wooshy!The Airplane %s wants to stop here\n",((arrivalPtr)flight)->nome);
+
+	FILE *f;
+
+	pthread_mutex_lock(&logMutex);
+	printf("%02d:%02d:%02d %s LANDING started\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, ((arrivalPtr)flight)->nome);
+	f=fopen("Logfile.txt","a");
+	fprintf(f,"%02d:%02d:%02d %s LANDING started\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, ((arrivalPtr)flight)->nome);
+	usleep((sharedMemPtr->valuesPtr->duracaoAterragem) * (sharedMemPtr->valuesPtr->unidadeTempo) * 1000);
+	fprintf(f,"%02d:%02d:%02d %s LANDING concluded\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, ((arrivalPtr)flight)->nome);
+	fclose(f);
+	printf("%02d:%02d:%02d %s LANDING concluded\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, ((arrivalPtr)flight)->nome);
+	pthread_mutex_unlock(&logMutex);
 	pthread_exit(0);
 }
 
 
 void *DepartureFlight(void *flight){
-
-	printf("woosh!A Airplane %s wants to get the f*** out of here\n",((departurePtr)flight)->nome);
+	
+	FILE *f;
+	
+	pthread_mutex_lock(&logMutex);
+	printf("%02d:%02d:%02d %s DEPARTURE started\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, ((departurePtr)flight)->nome);
+	f=fopen("Logfile.txt","a");
+	fprintf(f,"%02d:%02d:%02d %s DEPARTURE started\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, ((departurePtr)flight)->nome);
+	usleep((sharedMemPtr->valuesPtr->duracaoDescolagem) * (sharedMemPtr->valuesPtr->unidadeTempo) * 1000);
+	fprintf(f,"%02d:%02d:%02d %s DEPARTURE concluded\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, ((departurePtr)flight)->nome);
+	fclose(f);
+	printf("%02d:%02d:%02d %s DEPARTURE concluded\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, ((departurePtr)flight)->nome);
+	pthread_mutex_unlock(&logMutex);
 	pthread_exit(0);
 }
 
@@ -396,7 +427,7 @@ void terminate(){
 
 	pthread_join(timeThread,NULL);
 	pthread_join(comparatorThread,NULL);
-	
+	/*
 	for(int i=0;i<sizeArrivals;i++){
 		pthread_join(arrivalThreads[i],NULL);
 	}
@@ -404,14 +435,14 @@ void terminate(){
 	for(int i=0;i<sizeDepartures;i++){
 		pthread_join(departureThreads[i],NULL);
 	}
-
+	*/
 	unlink(PIPE_NAME);
 	remove(PIPE_NAME);
 
+	endLog();
+
 	shmdt(sharedMemPtr);
 	shmctl(shmid,IPC_RMID,NULL);
-
-	endLog();
 
 	printf("Dappertutto!\n");
 }
@@ -422,12 +453,11 @@ void insertLogfile(char *command, char *status){
 	f=fopen("Logfile.txt","a");
 	
 	pthread_mutex_lock(&logMutex);
-	fprintf(f,"xx:xx:xx %s COMMAND => %s\n",status,command);
-	printf("xx:xx:xx %s COMMAND => %s\n",status,command);
+	fprintf(f,"%02d:%02d:%02d %s COMMAND => %s\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, status, command);
+	printf("%02d:%02d:%02d %s COMMAND => %s\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, status, command);
 	pthread_mutex_unlock(&logMutex);
 	
 	fclose(f);
-
 }
 
 void startLog(){
@@ -435,8 +465,8 @@ void startLog(){
 	f=fopen("Logfile.txt","w");
 
 	pthread_mutex_lock(&logMutex);
-	fprintf(f,"Day XX, xx:xx:xx SIMULATION START\n");
-	printf("Day XX, xx:xx:xx SIMULATION START\n");
+	fprintf(f,"DAY %d, %02d:%02d:%02d SIMULATION START\n", sharedMemPtr->structHoras->tm_mday, sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec);
+	printf("DAY %d, %02d:%02d:%02d SIMULATION START\n", sharedMemPtr->structHoras->tm_mday, sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec);
 	pthread_mutex_unlock(&logMutex);
 
 	fclose(f);
@@ -447,9 +477,17 @@ void endLog(){
 	f=fopen("Logfile.txt","a");
 
 	pthread_mutex_lock(&logMutex);
-	fprintf(f, "DAY XX, xx:xx:xx SIMULATION END\n");
-	printf("DAY XX, xx:xx:xx SIMULATION END\n");
+	fprintf(f,"DAY %d, %02d:%02d:%02d SIMULATION END\n", sharedMemPtr->structHoras->tm_mday, sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec);
+	printf("DAY %d, %02d:%02d:%02d SIMULATION END\n", sharedMemPtr->structHoras->tm_mday, sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec);
 	pthread_mutex_unlock(&logMutex);
 	
 	fclose(f);
+}
+
+void calculaHora(){
+
+	time_t tempo;
+
+	time(&tempo);
+ 	sharedMemPtr->structHoras = localtime(&tempo);
 }

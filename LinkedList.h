@@ -30,7 +30,7 @@ typedef struct departureNode{
 
 
 //ARRIVALS
-void processaArrival(char* comando, arrivalPtr arrivalHead);
+void processaArrival(char* comando);
 void printArrivals(arrivalPtr arrivalHead);
 void freeArrivals(arrivalPtr arrivalHead);
 void insereArrival(arrivalPtr arrivalHead, char* nome, int init, int eta, int fuel);
@@ -40,7 +40,7 @@ void removeArrival(arrivalPtr arrivalHead);
 arrivalPtr criaArrivals();
 
 //DEPARTURE
-void processaDeparture(char* comando, departurePtr departureHead);
+void processaDeparture(char* comando);
 void printDepartures(departurePtr departureHead);
 void freeDepartures(departurePtr departureHead);
 void insereDeparture(departurePtr departureHead, char* nome, int init, int takeoff);
