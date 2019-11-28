@@ -112,6 +112,7 @@ pthread_t departureThreads[LIMITEVOOS];
 int sizeDepartures = 0;
 
 pthread_mutex_t logMutex = PTHREAD_MUTEX_INITIALIZER;
+FILE *logFile;
 
 arrivalPtr arrivalHead;
 departurePtr departureHead;
@@ -150,7 +151,7 @@ void controlTower() {
 
 void flightManager() {
 
-	char* comando;
+	char* comando = malloc(CINQ*sizeof(char));
 	char letra;
 	int fdNamedPipe;
 	int i;
@@ -158,8 +159,15 @@ void flightManager() {
 	criaSharedMemory();
 	criaMessageQueue();
 
+<<<<<<< HEAD
+	logFile = fopen("Logfile.txt", "w");
+
+	sharedMemPtr->arrivalHead = criaArrivals();
+	sharedMemPtr->departureHead = criaDepartures();
+=======
 	arrivalHead = criaArrivals();
 	departureHead = criaDepartures();
+>>>>>>> a44592345aa6e0b8bffb6ba237ece4af6e98b2b6
 
 	readConfig();
 	
@@ -176,10 +184,10 @@ void flightManager() {
 	while(isActive == 1){
 
 		i = 0;
-
-		comando = malloc(CINQ*sizeof(char));
+		printf("Premalloc\n");
+		printf("Posmalloc\n");
 		read(fdNamedPipe,&letra,1);
-
+		printf("Posread\n");
 		while ( letra != '\n') {
 			comando[i++] = letra;
 			read(fdNamedPipe,&letra,1);	
@@ -201,7 +209,10 @@ void flightManager() {
 			//printDepartures(sharedMemPtr->departureHead);
 		}
 
-		else insertLogfile("WRONG COMMAND =>",comando);
+		else{
+			insertLogfile("WRONG COMMAND =>",comando);
+			printf("Here\n");
+		}
 	}
 
 }
@@ -401,28 +412,27 @@ void processaDeparture(char* comando){
 
 void readConfig() {
 
-	FILE *f;
+	FILE *configFile;
 
 	sharedMemPtr->valuesPtr = malloc(sizeof(valuesStruct));
 
-	if (!(f = fopen("config.txt", "r"))){
+	if (!(configFile = fopen("config.txt", "r"))){
 		perror("Error opening file");
 		exit(1);
 	}
 
-	fscanf(f, "%d\n", &sharedMemPtr->valuesPtr->unidadeTempo);
-	fscanf(f, "%d, %d\n", &sharedMemPtr->valuesPtr->duracaoDescolagem, &sharedMemPtr->valuesPtr->intervaloDescolagens);
-	fscanf(f, "%d, %d\n", &sharedMemPtr->valuesPtr->duracaoAterragem, &sharedMemPtr->valuesPtr->intervaloAterragens);
-	fscanf(f, "%d, %d\n", &sharedMemPtr->valuesPtr->minHolding, &sharedMemPtr->valuesPtr->maxHolding);
-	fscanf(f, "%d\n", &sharedMemPtr->valuesPtr->maxPartidas);
-	fscanf(f, "%d\n", &sharedMemPtr->valuesPtr->maxChegadas);
+	fscanf(configFile, "%d\n", &sharedMemPtr->valuesPtr->unidadeTempo);
+	fscanf(configFile, "%d, %d\n", &sharedMemPtr->valuesPtr->duracaoDescolagem, &sharedMemPtr->valuesPtr->intervaloDescolagens);
+	fscanf(configFile, "%d, %d\n", &sharedMemPtr->valuesPtr->duracaoAterragem, &sharedMemPtr->valuesPtr->intervaloAterragens);
+	fscanf(configFile, "%d, %d\n", &sharedMemPtr->valuesPtr->minHolding, &sharedMemPtr->valuesPtr->maxHolding);
+	fscanf(configFile, "%d\n", &sharedMemPtr->valuesPtr->maxPartidas);
+	fscanf(configFile, "%d\n", &sharedMemPtr->valuesPtr->maxChegadas);
 
-	fclose(f);
+	fclose(configFile);
 }
 
 
 void *ArrivalFlight(void *flight){
-
 
 	insertLogfile("ARRIVAL STARTED =>",((departurePtr)flight)->nome);
 	usleep((sharedMemPtr->valuesPtr->duracaoAterragem) * (sharedMemPtr->valuesPtr->unidadeTempo) * 1000);
@@ -471,45 +481,35 @@ void terminate(){
 	shmdt(sharedMemPtr);
 	shmctl(shmid,IPC_RMID,NULL);
 
+	fclose(logFile);
 	printf("Dappertutto!\n");
 	exit(0);
 }
 
 
 void insertLogfile(char *status, char *command){
-	FILE *f;
-	f=fopen("Logfile.txt","a");
-	
+
 	pthread_mutex_lock(&logMutex);
-	fprintf(f,"%02d:%02d:%02d %s %s\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, status, command);
+	fprintf(logFile,"%02d:%02d:%02d %s %s\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, status, command);
 	printf("%02d:%02d:%02d %s %s\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, status, command);
 	pthread_mutex_unlock(&logMutex);
-	
-	fclose(f);
+	printf("Escreveu log\n");
 }
 
 void startLog(){
-	FILE *f;
-	f=fopen("Logfile.txt","w");
 
 	pthread_mutex_lock(&logMutex);
-	fprintf(f,"DAY %d, %02d:%02d:%02d SIMULATION START\n", sharedMemPtr->structHoras->tm_mday, sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec);
+	fprintf(logFile,"DAY %d, %02d:%02d:%02d SIMULATION START\n", sharedMemPtr->structHoras->tm_mday, sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec);
 	printf("DAY %d, %02d:%02d:%02d SIMULATION START\n", sharedMemPtr->structHoras->tm_mday, sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec);
 	pthread_mutex_unlock(&logMutex);
-
-	fclose(f);
 }
 
 void endLog(){
-	FILE *f;
-	f=fopen("Logfile.txt","a");
 
 	pthread_mutex_lock(&logMutex);
-	fprintf(f,"DAY %d, %02d:%02d:%02d SIMULATION END\n", sharedMemPtr->structHoras->tm_mday, sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec);
+	fprintf(logFile,"DAY %d, %02d:%02d:%02d SIMULATION END\n", sharedMemPtr->structHoras->tm_mday, sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec);
 	printf("DAY %d, %02d:%02d:%02d SIMULATION END\n", sharedMemPtr->structHoras->tm_mday, sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec);
 	pthread_mutex_unlock(&logMutex);
-	
-	fclose(f);
 }
 
 void calculaHora(){
