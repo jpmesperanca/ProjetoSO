@@ -60,8 +60,6 @@ typedef struct sharedMemStruct{
 	valuesStructPtr valuesPtr; 
 	struct tm * structHoras;
 	int timer;
-	arrivalPtr arrivalHead;
-	departurePtr departureHead;
 
 } memStruct;
 
@@ -115,11 +113,17 @@ int sizeDepartures = 0;
 pthread_mutex_t logMutex = PTHREAD_MUTEX_INITIALIZER;
 FILE *logFile;
 
+arrivalPtr arrivalHead;
+departurePtr departureHead;
+
 int main() {
 
 	pid_t childPid;
 
+
+
 	//signal(SIGINT,forceclose);
+	signal(SIGINT,terminate);
 	childPid = fork();
 
 	if (childPid == 0){
@@ -154,10 +158,15 @@ void flightManager() {
 	criaSharedMemory();
 	criaMessageQueue();
 
+<<<<<<< HEAD
 	logFile = fopen("Logfile.txt", "w");
 
 	sharedMemPtr->arrivalHead = criaArrivals();
 	sharedMemPtr->departureHead = criaDepartures();
+=======
+	arrivalHead = criaArrivals();
+	departureHead = criaDepartures();
+>>>>>>> a44592345aa6e0b8bffb6ba237ece4af6e98b2b6
 
 	readConfig();
 	
@@ -169,6 +178,7 @@ void flightManager() {
 	fdNamedPipe = criaPipe();
 	calculaHora();
 	startLog();
+
 
 	while(isActive == 1){
 
@@ -204,9 +214,6 @@ void flightManager() {
 		}
 	}
 
-	freeArrivals(sharedMemPtr->arrivalHead);
-	freeDepartures(sharedMemPtr->departureHead);
-	msgctl(messageQueueID, IPC_RMID, 0);
 }
 
 
@@ -299,8 +306,8 @@ void *timerCount(void* unused){
  	int j = 0;
 	
 
-	arrivalPtr arrivalAux = sharedMemPtr->arrivalHead;
-	departurePtr departureAux = sharedMemPtr->departureHead;
+	arrivalPtr arrivalAux = arrivalHead;
+	departurePtr departureAux = departureHead;
 
 	while(isActive == 1){
 
@@ -348,7 +355,7 @@ void processaArrival(char* comando){
 	int init;
 	int eta;
 	int fuel;
-	arrivalPtr aux = sharedMemPtr->arrivalHead;
+	arrivalPtr aux = arrivalHead;
 
 	sscanf(comando, "ARRIVAL %s init: %d eta: %d fuel: %d", nome, &init, &eta, &fuel);
 
@@ -366,7 +373,7 @@ void processaDeparture(char* comando){
 	char nome[10];
 	int init;
 	int takeoff;
-	departurePtr aux = sharedMemPtr->departureHead;
+	departurePtr aux = departureHead;
 
 	sscanf(comando, "DEPARTURE %s init: %d takeoff: %d", nome, &init, &takeoff);
 
@@ -424,7 +431,7 @@ void *DepartureFlight(void *flight){
 void terminate(){
 
 	int i;
-
+	isActive = 0;
 	printf("Tutto finisce..\n");
 
 	pthread_join(timeThread,NULL);
@@ -438,6 +445,10 @@ void terminate(){
 		pthread_join(departureThreads[i],NULL);
 	}
 
+	freeArrivals(arrivalHead);
+	freeDepartures(departureHead);
+	msgctl(messageQueueID, IPC_RMID, 0);
+
 	unlink(PIPE_NAME);
 	remove(PIPE_NAME);
 
@@ -448,6 +459,7 @@ void terminate(){
 
 	fclose(logFile);
 	printf("Dappertutto!\n");
+	exit(0);
 }
 
 
