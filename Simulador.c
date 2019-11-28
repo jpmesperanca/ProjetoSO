@@ -97,6 +97,7 @@ int shmid;
 
 //PTHREADS
 pthread_mutex_t timeMutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t condTime = PTHREAD_COND_INITIALIZER; 
 pthread_t timeThread;
 pthread_t comparatorThread;
 
@@ -300,7 +301,6 @@ void *timerCount(void* unused){
 
 	while(isActive == 1){
 
-
 		pthread_mutex_lock(&timeMutex);
 
 	   	if ((arrivalAux->nextNodePtr != NULL) && (arrivalAux->nextNodePtr->init == sharedMemPtr->timer)){
@@ -320,6 +320,30 @@ void *timerCount(void* unused){
 	}
 	sizeArrivals = i;
 	sizeDepartures = j;
+ }
+
+ void *CreateFlights(){ //MUDAR TUDO O QUE CONHECES
+ 	int time=0;
+ 	struct timeb tempo;
+ 	pthread_cond_init(condTime,NULL);
+ 	pthread_cond_timedwait(condTime,NULL,NULL);
+
+ 	while(isActive == 1){
+ 		ftime(&tempo);
+ 		if(departureHead->nextnodePtr == NULL)
+ 			time = (arrivalHead->nextnodePtr->init * sharedMemPtr->valuesPtr->unidadeTempo) - (tempo.time*1000 +tempo.millitm);
+ 		
+ 		else if (arrivalHead->nextnodePtr == NULL)
+ 			time = (departureHead->nextnodePtr->init * sharedMemPtr->valuesPtr->unidadeTempo) - (tempo.time*1000 +tempo.millitm);
+
+ 		else if (arrivalHead->nextnodePtr->init < departureHead->nextnodePtr->init)
+ 			time = (arrivalHead->nextnodePtr->init * sharedMemPtr->valuesPtr->unidadeTempo) - (tempo.time*1000 +tempo.millitm);
+
+ 		else if 
+ 			time = (departureHead->nextnodePtr->init * sharedMemPtr->valuesPtr->unidadeTempo) - (tempo.time*1000 +tempo.millitm);
+
+ 		pthread_cond_timedwait(CondTIme,NULL,time);
+ 	}
  }
 
 int confirmaSintaxe(char* comando, char* padrao){
