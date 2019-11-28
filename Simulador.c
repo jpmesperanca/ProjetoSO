@@ -59,7 +59,7 @@ typedef struct sharedMemStruct{
 
 	valuesStructPtr valuesPtr; 
 	struct tm * structHoras;
-	int timer;
+	struct timeb startTime;
 
 } memStruct;
 
@@ -76,8 +76,8 @@ void startLog();
 void endLog();
 
 
-void *timerCount(void*);
-void *timeComparator(void*);
+void *timerCount();
+void *timeComparator();
 void *ArrivalFlight(void* );
 void *DepartureFlight(void* );
 
@@ -97,7 +97,8 @@ int shmid;
 
 //PTHREADS
 pthread_mutex_t timeMutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t condTime = PTHREAD_COND_INITIALIZER; 
+pthread_cond_t condTime = PTHREAD_COND_INITIALIZER;
+pthread_cond_t creator = PTHREAD_COND_INITIALIZER;
 pthread_t timeThread;
 pthread_t comparatorThread;
 
@@ -121,9 +122,6 @@ int main() {
 
 	pid_t childPid;
 
-
-
-	//signal(SIGINT,forceclose);
 	signal(SIGINT,terminate);
 	childPid = fork();
 
@@ -146,6 +144,7 @@ void controlTower() {
 	printf("CT - Doing work!\n");
 	sleep(2);
 	printf("CT - Well, there's no work, going home\n");
+	exit(0);
 }
 
 
@@ -159,18 +158,19 @@ void flightManager() {
 	criaSharedMemory();
 	criaMessageQueue();
 
-<<<<<<< HEAD
+	ftime(&(sharedMemPtr->startTime));
+
 	logFile = fopen("Logfile.txt", "w");
 
-	sharedMemPtr->arrivalHead = criaArrivals();
-	sharedMemPtr->departureHead = criaDepartures();
-=======
 	arrivalHead = criaArrivals();
 	departureHead = criaDepartures();
->>>>>>> a44592345aa6e0b8bffb6ba237ece4af6e98b2b6
+
 
 	readConfig();
 	
+	pthread_cond_init(&condTime,NULL);
+	pthread_cond_init(&creator,NULL);
+
 	pthread_create(&timeThread,NULL,timerCount,NULL);
 	pthread_create(&comparatorThread,NULL,timeComparator,NULL);
 	
@@ -184,10 +184,9 @@ void flightManager() {
 	while(isActive == 1){
 
 		i = 0;
-		printf("Premalloc\n");
-		printf("Posmalloc\n");
+
+
 		read(fdNamedPipe,&letra,1);
-		printf("Posread\n");
 		while ( letra != '\n') {
 			comando[i++] = letra;
 			read(fdNamedPipe,&letra,1);	
@@ -211,7 +210,6 @@ void flightManager() {
 
 		else{
 			insertLogfile("WRONG COMMAND =>",comando);
-			printf("Here\n");
 		}
 	}
 
@@ -281,7 +279,8 @@ int criaPipe(){
 	return fdNamedPipe;
 }
 
-void *timerCount(void* unused){
+/*
+void *timerCount(){
 
 	struct timeb tempoStruct, tempoStruct2;
 
@@ -297,15 +296,17 @@ void *timerCount(void* unused){
  		calculaHora();
  		pthread_mutex_unlock(&timeMutex);
  		//usleep(20000);
- 		//printf("Unidade de Tempo %d\n",sharedMemPtr->timer);	/*PRINT TO CHECK SYNCRONIZATION*/
+ 		//printf("Unidade de Tempo %d\n",sharedMemPtr->timer);	PRINT TO CHECK SYNCRONIZATION
  	}
  }
+*/
 
- void *timeComparator(void* unused){
+ void *timeComparator(){
 
  	int i = 0;
  	int j = 0;
-	
+	int timer;
+	struct timeb now;
 
 	arrivalPtr arrivalAux = arrivalHead;
 	departurePtr departureAux = departureHead;
@@ -313,15 +314,17 @@ void *timerCount(void* unused){
 	while(isActive == 1){
 
 		pthread_mutex_lock(&timeMutex);
-
-	   	if ((arrivalAux->nextNodePtr != NULL) && (arrivalAux->nextNodePtr->init == sharedMemPtr->timer)){
+		pthread_cond_wait(&creator,&timeMutex);
+		ftime(&now);
+		timer = ((1000* (now.time - sharedMemPtr->startTime.time) + (now.millitm - sharedMemPtr->startTime.millitm)) / sharedMemPtr->valuesPtr->unidadeTempo);
+	   	if ((arrivalAux->nextNodePtr != NULL) && (arrivalAux->nextNodePtr->init == timer)){
 
 	   		pthread_create(&arrivalThreads[i++],NULL,ArrivalFlight,(void *)arrivalAux->nextNodePtr);
 	   		arrivalAux = arrivalAux->nextNodePtr;
 	   		sizeArrivals++;
 	    }
 
-	    if ((departureAux->nextNodePtr != NULL) && (departureAux->nextNodePtr->init == sharedMemPtr->timer)){
+	    if ((departureAux->nextNodePtr != NULL) && (departureAux->nextNodePtr->init == timer)){
 
 	   		pthread_create(&departureThreads[j++],NULL,DepartureFlight,(void *)arrivalAux->nextNodePtr);
 	   		departureAux = departureAux->nextNodePtr;
@@ -333,27 +336,36 @@ void *timerCount(void* unused){
 	sizeDepartures = j;
  }
 
- void *CreateFlights(){ //MUDAR TUDO O QUE CONHECES
- 	int time=0;
+ void *timerCount(){ 
+ 	int timer=0,aux=0;
  	struct timeb tempo;
- 	pthread_cond_init(condTime,NULL);
- 	pthread_cond_timedwait(condTime,NULL,NULL);
+ 	struct timespec timetoWait;
+ 	pthread_cond_wait(&condTime,&timeMutex);
 
  	while(isActive == 1){
  		ftime(&tempo);
- 		if(departureHead->nextnodePtr == NULL)
- 			time = (arrivalHead->nextnodePtr->init * sharedMemPtr->valuesPtr->unidadeTempo) - (tempo.time*1000 +tempo.millitm);
- 		
- 		else if (arrivalHead->nextnodePtr == NULL)
- 			time = (departureHead->nextnodePtr->init * sharedMemPtr->valuesPtr->unidadeTempo) - (tempo.time*1000 +tempo.millitm);
+ 		aux=0;
+ 		if(departureHead->nextNodePtr == NULL && arrivalHead->nextNodePtr != NULL)
+ 			timer = (arrivalHead->nextNodePtr->init * sharedMemPtr->valuesPtr->unidadeTempo); 
 
- 		else if (arrivalHead->nextnodePtr->init < departureHead->nextnodePtr->init)
- 			time = (arrivalHead->nextnodePtr->init * sharedMemPtr->valuesPtr->unidadeTempo) - (tempo.time*1000 +tempo.millitm);
+ 		else if (arrivalHead->nextNodePtr == NULL && departureHead->nextNodePtr != NULL)
+ 			timer = (departureHead->nextNodePtr->init * sharedMemPtr->valuesPtr->unidadeTempo);
 
- 		else if 
- 			time = (departureHead->nextnodePtr->init * sharedMemPtr->valuesPtr->unidadeTempo) - (tempo.time*1000 +tempo.millitm);
+ 		else if (arrivalHead->nextNodePtr->init <= departureHead->nextNodePtr->init)
+ 			timer = (arrivalHead->nextNodePtr->init * sharedMemPtr->valuesPtr->unidadeTempo);
 
- 		pthread_cond_timedwait(CondTIme,NULL,time);
+ 		else if (arrivalHead->nextNodePtr->init > departureHead->nextNodePtr->init)
+ 			timer = (departureHead->nextNodePtr->init * sharedMemPtr->valuesPtr->unidadeTempo);
+ 		else{
+ 			pthread_cond_wait(&condTime,&timeMutex);
+ 			aux=1;
+ 		}
+ 		pthread_cond_signal(&creator);
+
+    	timetoWait.tv_sec = timer/1000;
+    	timetoWait.tv_nsec = timer %1000 * 1000000; 
+
+    	if (aux ==0) pthread_cond_timedwait(&condTime,&timeMutex,&timetoWait);
  	}
  }
 
@@ -380,11 +392,13 @@ void processaArrival(char* comando){
 	int eta;
 	int fuel;
 	arrivalPtr aux = arrivalHead;
+	struct timeb now;
+	ftime(&now);
 
 	sscanf(comando, "ARRIVAL %s init: %d eta: %d fuel: %d", nome, &init, &eta, &fuel);
 
-	if ((fuel >= eta) && (sharedMemPtr->timer<=init)){
-
+	if ((fuel >= eta) && (((1000* (now.time - sharedMemPtr->startTime.time) + (now.millitm - sharedMemPtr->startTime.millitm)) / sharedMemPtr->valuesPtr->unidadeTempo) <= init)){
+		pthread_cond_signal(&condTime);
 		insertLogfile("NEW COMMAND =>",comando);
 		insereArrival(aux,nome,init,eta,fuel);
 	} 
@@ -398,11 +412,13 @@ void processaDeparture(char* comando){
 	int init;
 	int takeoff;
 	departurePtr aux = departureHead;
+	struct timeb now;
+	ftime(&now);
 
 	sscanf(comando, "DEPARTURE %s init: %d takeoff: %d", nome, &init, &takeoff);
 
-	if (sharedMemPtr->timer<=init){
-
+	if (((1000* (now.time - sharedMemPtr->startTime.time) + (now.millitm - sharedMemPtr->startTime.millitm)) / sharedMemPtr->valuesPtr->unidadeTempo) <= init){
+		pthread_cond_signal(&condTime);
 		insertLogfile("NEW COMMAND =>",comando);
 		insereDeparture(aux,nome,init,takeoff);
 	}
@@ -458,13 +474,19 @@ void terminate(){
 	isActive = 0;
 	printf("Tutto finisce..\n");
 
+	//Just in case
+	pthread_cond_signal(&condTime);
+	pthread_cond_signal(&creator);
+
+	pthread_cond_destroy(&condTime);
+	pthread_cond_destroy(&creator);
+
 	pthread_join(timeThread,NULL);
 	pthread_join(comparatorThread,NULL);
 	
 	for(int i=0;i<sizeArrivals;i++){
 		pthread_join(arrivalThreads[i],NULL);
 	}
-
 	for(int i=0;i<sizeDepartures;i++){
 		pthread_join(departureThreads[i],NULL);
 	}
@@ -493,7 +515,6 @@ void insertLogfile(char *status, char *command){
 	fprintf(logFile,"%02d:%02d:%02d %s %s\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, status, command);
 	printf("%02d:%02d:%02d %s %s\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, status, command);
 	pthread_mutex_unlock(&logMutex);
-	printf("Escreveu log\n");
 }
 
 void startLog(){
