@@ -340,7 +340,9 @@ void *timerCount(){
  	int timer=0,aux=0;
  	struct timeb tempo;
  	struct timespec timetoWait;
+	pthread_mutex_lock(&timeMutex);
  	pthread_cond_wait(&condTime,&timeMutex);
+	pthread_mutex_unlock(&timeMutex);
 
  	while(isActive == 1){
  		ftime(&tempo);
@@ -365,8 +367,11 @@ void *timerCount(){
     	timetoWait.tv_sec = timer/1000;
     	timetoWait.tv_nsec = timer %1000 * 1000000; 
 
-    	if (aux ==0) pthread_cond_timedwait(&condTime,&timeMutex,&timetoWait);
- 	}
+    	if (aux ==0){
+		pthread_mutex_lock(&timeMutex);
+		pthread_cond_timedwait(&condTime,&timeMutex,&timetoWait);
+ 		pthread_mutex_unlock(&timeMutex);
+	}
  }
 
 int confirmaSintaxe(char* comando, char* padrao){
