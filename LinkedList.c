@@ -97,6 +97,18 @@ void removeArrival(arrivalPtr arrivalHead){
     arrivalHead->nextNodePtr = aux;
 }
 
+
+
+struct arrivalNode arrivalCopy(arrivalPtr aux){
+    struct arrivalNode copy;
+    copy.nome=strdup(aux->nome);
+    copy.init=aux->init;
+    copy.eta=aux->eta;
+    copy.fuel=aux->fuel;
+    copy.nextNodePtr=NULL;
+    return copy;
+}
+
 //DEPARTURES
 
 departurePtr criaDepartures(){
@@ -138,12 +150,18 @@ void freeDepartures(departurePtr departureHead){
 
         while(departureHead != NULL){
 
-            free(departureHead->nome);
             aux = departureHead->nextNodePtr;
-            free(departureHead);
+            freeDepartureNode(departureHead);
             departureHead = aux;
         }
 }
+
+void freeDepartureNode(departurePtr departureHead){
+
+    free(departureHead->nome);
+    free(departureHead);
+}
+
 
 void printDepartures(departurePtr departureHead){
 
@@ -156,3 +174,93 @@ void printDepartures(departurePtr departureHead){
         } 
     printf("------\n");
 }
+
+void removeDeparture(departurePtr departureHead){
+
+    departurePtr aux = departureHead->nextNodePtr->nextNodePtr;
+
+    freeDepartureNode(departureHead->nextNodePtr);
+
+    departureHead->nextNodePtr = aux;
+}
+
+
+struct departureNode departureCopy(departurePtr aux){
+    struct departureNode copy;
+    copy.nome=strdup(aux->nome);
+    copy.init=aux->init;
+    copy.takeoff=aux->takeoff;
+    copy.nextNodePtr=NULL;
+    return copy;
+}
+
+
+//queue
+
+queuePtr criaQueue(){
+
+    queuePtr aux;
+    aux = malloc(sizeof(queueStruct));
+
+    if (aux!=NULL){
+
+        aux->tempoDesejado = -1;
+        aux->nextNodePtr=NULL;
+        aux->fuel = -1;
+    }
+
+    return aux;
+}
+
+void insereQueue(queuePtr queueHead, int tempoDesejado, int fuel){
+
+    queuePtr novo = criaQueue();
+    queuePtr aux = queueHead;
+
+    while((aux->nextNodePtr != NULL) && (aux->nextNodePtr->tempoDesejado <= tempoDesejado))
+        aux = aux->nextNodePtr;
+
+    novo->nextNodePtr = aux->nextNodePtr;
+    aux->nextNodePtr = novo;
+
+    novo->tempoDesejado = tempoDesejado;
+    if (fuel != -1)
+        novo->fuel = fuel;
+}
+
+void freeQueue(queuePtr queueHead){
+
+    queuePtr aux = queueHead->nextNodePtr;
+
+        while(queueHead != NULL){
+
+            aux = queueHead->nextNodePtr;
+            free(queueHead);
+            queueHead = aux;
+        }
+}
+
+void printDepartureQueue(queuePtr queueHead){
+
+    queuePtr aux = queueHead->nextNodePtr;
+
+        while(aux != NULL){
+
+            printf("Voo: tempoDesejado: %d, \n", aux->tempoDesejado);
+            aux = aux->nextNodePtr;
+        } 
+    printf("------\n");
+}
+
+void printArrivalQueue(queuePtr queueHead){
+
+    queuePtr aux = queueHead->nextNodePtr;
+
+        while(aux != NULL){
+
+            printf("Voo: fuel - %d, tempoDesejado: %d\n", aux->fuel, aux->tempoDesejado);
+            aux = aux->nextNodePtr;
+        } 
+    printf("------\n");
+}
+
