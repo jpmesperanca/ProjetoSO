@@ -382,7 +382,7 @@ void timeComparator(){
 
 	timer = ((1000* (now.tv_sec - sharedMemPtr->Time.tv_sec) + (now.tv_nsec - sharedMemPtr->Time.tv_nsec)/1000000) / valuesPtr->unidadeTempo);
    	while ((arrivalHead->nextNodePtr != NULL) && (arrivalHead->nextNodePtr->init == timer)){
-   		printf("Se este print nao tiver aqui da erro!\n"); // SE ESTE PRINT NAO ESTIVER AQUI NAO FUNCIONA take it was you want it
+   		printf("Se este print nao tiver aqui da erro!\n"); // SE ESTE PRINT NAO ESTIVER AQUI NAO FUNCIONA take it as you want it
 		copyArrival = arrivalCopy(arrivalHead->nextNodePtr);
 		removeArrival(arrivalHead);
 		printf("fuck|\n");
