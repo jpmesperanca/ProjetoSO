@@ -170,7 +170,7 @@ void flightManager() {
 	
 	pthread_cond_init(&condTime,NULL);
 	pthread_cond_init(&creator,NULL);
-
+	
 	pthread_create(&timeThread,NULL,timerCount,NULL);
 	pthread_create(&comparatorThread,NULL,timeComparator,NULL);
 	
@@ -336,8 +336,10 @@ void *timerCount(){
 	sizeDepartures = j;
  }
 
- void *timerCount(){ 
- 	int timer=0,aux=0;
+ void *timerCount(){
+ 	int start=0,aux=0;
+ 	time_t  timerSeconds=0;
+ 	long timerMilli=0;
  	struct timeb tempo;
  	struct timespec timetoWait;
 	pthread_mutex_lock(&timeMutex);
@@ -347,30 +349,49 @@ void *timerCount(){
  	while(isActive == 1){
  		ftime(&tempo);
  		aux=0;
- 		if(departureHead->nextNodePtr == NULL && arrivalHead->nextNodePtr != NULL)
- 			timer = (arrivalHead->nextNodePtr->init * sharedMemPtr->valuesPtr->unidadeTempo); 
 
- 		else if (arrivalHead->nextNodePtr == NULL && departureHead->nextNodePtr != NULL)
- 			timer = (departureHead->nextNodePtr->init * sharedMemPtr->valuesPtr->unidadeTempo);
+ 		if(departureHead->nextNodePtr == NULL && arrivalHead->nextNodePtr != NULL){
+ 			start = (arrivalHead->nextNodePtr->init * sharedMemPtr->valuesPtr->unidadeTempo);
+ 			timerSeconds = ((start + sharedMemPtr->startTime.millitm)/1000 + sharedMemPtr->startTime.time);
+ 			//printf("|%ld,%ld|\n",sharedMemPtr->startTime.time,timerSeconds);
+ 			timerMilli = (start+sharedMemPtr->startTime.millitm) % 1000 ;  
+ 		}
 
- 		else if (arrivalHead->nextNodePtr->init <= departureHead->nextNodePtr->init)
- 			timer = (arrivalHead->nextNodePtr->init * sharedMemPtr->valuesPtr->unidadeTempo);
+ 		else if (arrivalHead->nextNodePtr == NULL && departureHead->nextNodePtr != NULL){
+ 			start = (departureHead->nextNodePtr->init * sharedMemPtr->valuesPtr->unidadeTempo);
+ 			timerSeconds = ((start+tempo.millitm)/1000 + tempo.time)*1000;
+ 			timerMilli = (start+tempo.millitm) % 1000 ;  
+ 		} 
 
- 		else if (arrivalHead->nextNodePtr->init > departureHead->nextNodePtr->init)
- 			timer = (departureHead->nextNodePtr->init * sharedMemPtr->valuesPtr->unidadeTempo);
+ 		else if (arrivalHead->nextNodePtr->init <= departureHead->nextNodePtr->init){
+ 			start = (arrivalHead->nextNodePtr->init * sharedMemPtr->valuesPtr->unidadeTempo);
+ 			timerSeconds = ((start+tempo.millitm)/1000 + tempo.time)*1000;
+ 			timerMilli = (start+tempo.millitm) % 1000 ;   
+ 		}
+
+ 		else if (arrivalHead->nextNodePtr->init > departureHead->nextNodePtr->init){
+ 			start = (departureHead->nextNodePtr->init * sharedMemPtr->valuesPtr->unidadeTempo);
+ 			timerSeconds = ((start+tempo.millitm)/1000 + tempo.time)*1000;
+ 			timerMilli = (start+tempo.millitm) % 1000 ;  
+ 		}
+
  		else{
  			pthread_cond_wait(&condTime,&timeMutex);
  			aux=1;
  		}
  		pthread_cond_signal(&creator);
+    	//timetoWait.tv_sec = timerSeconds-tempo.time;
+    	//timetoWait.tv_nsec = (timerMilli - tempo.millitm)* 1000000;
 
-    	timetoWait.tv_sec = timer/1000;
-    	timetoWait.tv_nsec = timer %1000 * 1000000; 
+    	timetoWait.tv_sec = tempo.time + 10;
 
     	if (aux ==0){
-		pthread_mutex_lock(&timeMutex);
-		pthread_cond_timedwait(&condTime,&timeMutex,&timetoWait);
- 		pthread_mutex_unlock(&timeMutex);
+			pthread_mutex_lock(&timeMutex);
+
+			pthread_cond_timedwait(&condTime,&timeMutex,&timetoWait);
+			printf("\n|%ld-%ld|\n",timerSeconds, timerMilli);
+	 		pthread_mutex_unlock(&timeMutex);
+	 	}
 	}
  }
 
@@ -517,6 +538,7 @@ void terminate(){
 void insertLogfile(char *status, char *command){
 
 	pthread_mutex_lock(&logMutex);
+	calculaHora();
 	fprintf(logFile,"%02d:%02d:%02d %s %s\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, status, command);
 	printf("%02d:%02d:%02d %s %s\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, status, command);
 	pthread_mutex_unlock(&logMutex);
@@ -525,6 +547,7 @@ void insertLogfile(char *status, char *command){
 void startLog(){
 
 	pthread_mutex_lock(&logMutex);
+	calculaHora();
 	fprintf(logFile,"DAY %d, %02d:%02d:%02d SIMULATION START\n", sharedMemPtr->structHoras->tm_mday, sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec);
 	printf("DAY %d, %02d:%02d:%02d SIMULATION START\n", sharedMemPtr->structHoras->tm_mday, sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec);
 	pthread_mutex_unlock(&logMutex);
@@ -533,6 +556,7 @@ void startLog(){
 void endLog(){
 
 	pthread_mutex_lock(&logMutex);
+	calculaHora();
 	fprintf(logFile,"DAY %d, %02d:%02d:%02d SIMULATION END\n", sharedMemPtr->structHoras->tm_mday, sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec);
 	printf("DAY %d, %02d:%02d:%02d SIMULATION END\n", sharedMemPtr->structHoras->tm_mday, sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec);
 	pthread_mutex_unlock(&logMutex);
