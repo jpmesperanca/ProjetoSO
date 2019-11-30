@@ -59,7 +59,7 @@ typedef struct sharedMemStruct{
 
 	valuesStructPtr valuesPtr; 
 	struct tm * structHoras;
-	struct timeb startTime;
+	struct timespec Time;
 
 } memStruct;
 
@@ -77,7 +77,7 @@ void endLog();
 
 
 void *timerCount();
-void *timeComparator();
+void timeComparator();
 void *ArrivalFlight(void* );
 void *DepartureFlight(void* );
 
@@ -152,13 +152,16 @@ void flightManager() {
 
 	char* comando = malloc(CINQ*sizeof(char));
 	char letra;
-	int fdNamedPipe;
-	int i;
+	int fdNamedPipe, i , result;
 
 	criaSharedMemory();
 	criaMessageQueue();
 
-	ftime(&(sharedMemPtr->startTime));
+	result = clock_gettime(CLOCK_REALTIME, &sharedMemPtr->Time);
+    if (result == -1) {
+        perror("clock_gettime");
+        exit(EXIT_FAILURE);
+    }
 
 	logFile = fopen("Logfile.txt", "w");
 
@@ -168,11 +171,7 @@ void flightManager() {
 
 	readConfig();
 	
-	pthread_cond_init(&condTime,NULL);
-	pthread_cond_init(&creator,NULL);
-	
 	pthread_create(&timeThread,NULL,timerCount,NULL);
-	pthread_create(&comparatorThread,NULL,timeComparator,NULL);
 	
 	//testMQ();
 
@@ -279,121 +278,102 @@ int criaPipe(){
 	return fdNamedPipe;
 }
 
-/*
+
 void *timerCount(){
+ 	int aux=0,result;
+ 	int tempo=0, tempo_sec=0, tempo_nsec=0;
+ 	struct timespec timetoWait = { 0 };
 
-	struct timeb tempoStruct, tempoStruct2;
+ 	while(isActive == 1){
+ 		
+		aux=0;
 
-	sharedMemPtr->timer = 0;
+		timeComparator();
 
-	ftime(&tempoStruct);
+	    result=pthread_mutex_lock(&timeMutex);
+		if (result != 0) {
+        	fprintf(stderr, "pthread_mutex_lock: %s\n", strerror(result));
+        	exit(EXIT_FAILURE);
+   		} 
 
-	while(isActive == 1){
+   		if(arrivalHead->nextNodePtr == NULL && departureHead->nextNodePtr == NULL){
+ 			pthread_cond_wait(&condTime,&timeMutex);
+ 			aux=1;
+   		}
 
- 		pthread_mutex_lock(&timeMutex);
- 		ftime(&tempoStruct2);
- 		sharedMemPtr->timer = (int)(1000*(tempoStruct2.time - tempoStruct.time)+(tempoStruct2.millitm - tempoStruct.millitm))/sharedMemPtr->valuesPtr->unidadeTempo;
- 		calculaHora();
- 		pthread_mutex_unlock(&timeMutex);
- 		//usleep(20000);
- 		//printf("Unidade de Tempo %d\n",sharedMemPtr->timer);	PRINT TO CHECK SYNCRONIZATION
- 	}
- }
-*/
+   		else if(departureHead->nextNodePtr == NULL && arrivalHead->nextNodePtr != NULL)
+ 			tempo = arrivalHead->nextNodePtr->init * sharedMemPtr->valuesPtr->unidadeTempo;
 
- void *timeComparator(){
+ 		else if (arrivalHead->nextNodePtr == NULL && departureHead->nextNodePtr != NULL)
+ 			tempo = departureHead->nextNodePtr->init * sharedMemPtr->valuesPtr->unidadeTempo;
+
+ 		else if (arrivalHead->nextNodePtr->init <= departureHead->nextNodePtr->init)
+ 			tempo = arrivalHead->nextNodePtr->init * sharedMemPtr->valuesPtr->unidadeTempo;
+
+ 		else if (arrivalHead->nextNodePtr->init > departureHead->nextNodePtr->init)
+ 			tempo = departureHead->nextNodePtr->init * sharedMemPtr->valuesPtr->unidadeTempo;
+
+
+ 		tempo_sec = tempo/1000;
+ 		tempo_nsec = (tempo%1000)*1000000;
+
+
+ 		timetoWait.tv_sec =sharedMemPtr->Time.tv_sec + tempo_sec + (tempo_nsec + sharedMemPtr->Time.tv_nsec)/1000000000;
+ 		timetoWait.tv_nsec = (tempo_nsec + sharedMemPtr->Time.tv_nsec)%1000000000;
+
+
+    	if (aux ==0){
+
+			result = pthread_cond_timedwait(&condTime,&timeMutex,&timetoWait);
+			if (result !=0  && result != ETIMEDOUT) {
+        		fprintf(stderr, "%s\n", strerror(result));
+        		exit(EXIT_FAILURE);
+    		}
+	 	}
+
+	 	pthread_mutex_unlock(&timeMutex);
+	}
+}
+
+
+void timeComparator(){
 
  	int i = 0;
  	int j = 0;
 	int timer;
-	struct timeb now;
+	int result;
+	struct timespec now;
+
+	result = clock_gettime(CLOCK_REALTIME, &now);
+    if (result == -1) {
+        perror("clock_gettime");
+        exit(EXIT_FAILURE);
+    }
 
 	arrivalPtr arrivalAux = arrivalHead;
 	departurePtr departureAux = departureHead;
 
-	while(isActive == 1){
+	timer = ((1000* (now.tv_sec - sharedMemPtr->Time.tv_sec) + (now.tv_nsec - sharedMemPtr->Time.tv_nsec)/1000000) / sharedMemPtr->valuesPtr->unidadeTempo);
+   	while ((arrivalAux->nextNodePtr != NULL) && (arrivalAux->nextNodePtr->init == timer)){
 
-		pthread_mutex_lock(&timeMutex);
-		pthread_cond_wait(&creator,&timeMutex);
-		ftime(&now);
-		timer = ((1000* (now.time - sharedMemPtr->startTime.time) + (now.millitm - sharedMemPtr->startTime.millitm)) / sharedMemPtr->valuesPtr->unidadeTempo);
-	   	if ((arrivalAux->nextNodePtr != NULL) && (arrivalAux->nextNodePtr->init == timer)){
+   		pthread_create(&arrivalThreads[i++],NULL,ArrivalFlight,(void *)arrivalAux->nextNodePtr);
+   		arrivalAux = arrivalAux->nextNodePtr;
+   		sizeArrivals++;
+   		
+    }
 
-	   		pthread_create(&arrivalThreads[i++],NULL,ArrivalFlight,(void *)arrivalAux->nextNodePtr);
-	   		arrivalAux = arrivalAux->nextNodePtr;
-	   		sizeArrivals++;
-	    }
+    while ((departureAux->nextNodePtr != NULL) && (departureAux->nextNodePtr->init == timer)){
 
-	    if ((departureAux->nextNodePtr != NULL) && (departureAux->nextNodePtr->init == timer)){
+   		pthread_create(&departureThreads[j++],NULL,DepartureFlight,(void *)arrivalAux->nextNodePtr);
+   		departureAux = departureAux->nextNodePtr;
+   		sizeDepartures++;
+   		removeDeparture(departureHead);
+    }
 
-	   		pthread_create(&departureThreads[j++],NULL,DepartureFlight,(void *)arrivalAux->nextNodePtr);
-	   		departureAux = departureAux->nextNodePtr;
-	   		sizeDepartures++;
-	    }
-	    pthread_mutex_unlock(&timeMutex);
-	}
-	sizeArrivals = i;
-	sizeDepartures = j;
- }
+	sizeArrivals += i;
+	sizeDepartures += j;
+}
 
- void *timerCount(){
- 	int start=0,aux=0;
- 	time_t  timerSeconds=0;
- 	long timerMilli=0;
- 	struct timeb tempo;
- 	struct timespec timetoWait;
-	pthread_mutex_lock(&timeMutex);
- 	pthread_cond_wait(&condTime,&timeMutex);
-	pthread_mutex_unlock(&timeMutex);
-
- 	while(isActive == 1){
- 		ftime(&tempo);
- 		aux=0;
-
- 		if(departureHead->nextNodePtr == NULL && arrivalHead->nextNodePtr != NULL){
- 			start = (arrivalHead->nextNodePtr->init * sharedMemPtr->valuesPtr->unidadeTempo);
- 			timerSeconds = ((start + sharedMemPtr->startTime.millitm)/1000 + sharedMemPtr->startTime.time);
- 			//printf("|%ld,%ld|\n",sharedMemPtr->startTime.time,timerSeconds);
- 			timerMilli = (start+sharedMemPtr->startTime.millitm) % 1000 ;  
- 		}
-
- 		else if (arrivalHead->nextNodePtr == NULL && departureHead->nextNodePtr != NULL){
- 			start = (departureHead->nextNodePtr->init * sharedMemPtr->valuesPtr->unidadeTempo);
- 			timerSeconds = ((start+tempo.millitm)/1000 + tempo.time)*1000;
- 			timerMilli = (start+tempo.millitm) % 1000 ;  
- 		} 
-
- 		else if (arrivalHead->nextNodePtr->init <= departureHead->nextNodePtr->init){
- 			start = (arrivalHead->nextNodePtr->init * sharedMemPtr->valuesPtr->unidadeTempo);
- 			timerSeconds = ((start+tempo.millitm)/1000 + tempo.time)*1000;
- 			timerMilli = (start+tempo.millitm) % 1000 ;   
- 		}
-
- 		else if (arrivalHead->nextNodePtr->init > departureHead->nextNodePtr->init){
- 			start = (departureHead->nextNodePtr->init * sharedMemPtr->valuesPtr->unidadeTempo);
- 			timerSeconds = ((start+tempo.millitm)/1000 + tempo.time)*1000;
- 			timerMilli = (start+tempo.millitm) % 1000 ;  
- 		}
-
- 		else{
- 			pthread_cond_wait(&condTime,&timeMutex);
- 			aux=1;
- 		}
- 		pthread_cond_signal(&creator);
-    	//timetoWait.tv_sec = timerSeconds-tempo.time;
-    	//timetoWait.tv_nsec = (timerMilli - tempo.millitm)* 1000000;
-
-    	timetoWait.tv_sec = tempo.time + 10;
-
-    	if (aux ==0){
-			pthread_mutex_lock(&timeMutex);
-
-			pthread_cond_timedwait(&condTime,&timeMutex,&timetoWait);
-			printf("\n|%ld-%ld|\n",timerSeconds, timerMilli);
-	 		pthread_mutex_unlock(&timeMutex);
-	 	}
-	}
- }
 
 int confirmaSintaxe(char* comando, char* padrao){
 
@@ -417,13 +397,20 @@ void processaArrival(char* comando){
 	int init;
 	int eta;
 	int fuel;
+	int result;
 	arrivalPtr aux = arrivalHead;
-	struct timeb now;
-	ftime(&now);
+	struct timespec now;
+	
+	result = clock_gettime(CLOCK_REALTIME, &now);
+    if (result == -1) {
+        perror("clock_gettime");
+        exit(EXIT_FAILURE);
+    }
+
 
 	sscanf(comando, "ARRIVAL %s init: %d eta: %d fuel: %d", nome, &init, &eta, &fuel);
 
-	if ((fuel >= eta) && (((1000* (now.time - sharedMemPtr->startTime.time) + (now.millitm - sharedMemPtr->startTime.millitm)) / sharedMemPtr->valuesPtr->unidadeTempo) <= init)){
+	if ((fuel >= eta) && (((1000* (now.tv_sec - sharedMemPtr->Time.tv_sec) + (now.tv_nsec - sharedMemPtr->Time.tv_nsec)/1000000) / sharedMemPtr->valuesPtr->unidadeTempo) <= init)){
 		pthread_cond_signal(&condTime);
 		insertLogfile("NEW COMMAND =>",comando);
 		insereArrival(aux,nome,init,eta,fuel);
@@ -437,13 +424,19 @@ void processaDeparture(char* comando){
 	char nome[10];
 	int init;
 	int takeoff;
+	int result;
 	departurePtr aux = departureHead;
-	struct timeb now;
-	ftime(&now);
+	struct timespec now;
+	
+	result = clock_gettime(CLOCK_REALTIME, &now);
+    if (result == -1) {
+        perror("clock_gettime");
+        exit(EXIT_FAILURE);
+    }
 
 	sscanf(comando, "DEPARTURE %s init: %d takeoff: %d", nome, &init, &takeoff);
 
-	if (((1000* (now.time - sharedMemPtr->startTime.time) + (now.millitm - sharedMemPtr->startTime.millitm)) / sharedMemPtr->valuesPtr->unidadeTempo) <= init){
+	if (((1000* (now.tv_sec - sharedMemPtr->Time.tv_sec) + (now.tv_nsec - sharedMemPtr->Time.tv_nsec)/1000000) / sharedMemPtr->valuesPtr->unidadeTempo) <= init){
 		pthread_cond_signal(&condTime);
 		insertLogfile("NEW COMMAND =>",comando);
 		insereDeparture(aux,nome,init,takeoff);
@@ -476,9 +469,12 @@ void readConfig() {
 
 void *ArrivalFlight(void *flight){
 
-	insertLogfile("ARRIVAL STARTED =>",((departurePtr)flight)->nome);
+	struct arrivalNode voo;
+	voo = arrivalCopy((arrivalPtr)flight);
+	removeArrival(arrivalHead);
+	insertLogfile("ARRIVAL STARTED =>",voo.nome);
 	usleep((sharedMemPtr->valuesPtr->duracaoAterragem) * (sharedMemPtr->valuesPtr->unidadeTempo) * 1000);
-	insertLogfile("ARRIVAL CONCLUDED =>",((departurePtr)flight)->nome);
+	insertLogfile("ARRIVAL CONCLUDED =>",voo.nome);
 
 	pthread_exit(0);
 }
@@ -486,13 +482,15 @@ void *ArrivalFlight(void *flight){
 
 void *DepartureFlight(void *flight){
 	
-	insertLogfile("DEPARTURE STARTED =>",((departurePtr)flight)->nome);
+	struct departureNode voo;
+	voo = departureCopy((departurePtr)flight);
+	removeDeparture(departureHead);
+	insertLogfile("DEPARTURE STARTED =>",voo.nome);
 	usleep((sharedMemPtr->valuesPtr->duracaoDescolagem) * (sharedMemPtr->valuesPtr->unidadeTempo) * 1000);
-	insertLogfile("DEPARTURE CONCLUDED =>",((departurePtr)flight)->nome);
+	insertLogfile("DEPARTURE CONCLUDED =>",voo.nome);
 	
 	pthread_exit(0);
 }
-
 
 void terminate(){
 

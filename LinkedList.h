@@ -37,6 +37,7 @@ void insereArrival(arrivalPtr arrivalHead, char* nome, int init, int eta, int fu
 void criarVoo();
 void freeArrivalNode(arrivalPtr arrivalHead);
 void removeArrival(arrivalPtr arrivalHead);
+struct arrivalNode arrivalCopy(arrivalPtr arrivalPtr);
 arrivalPtr criaArrivals();
 
 //DEPARTURE
@@ -44,7 +45,9 @@ void processaDeparture(char* comando);
 void printDepartures(departurePtr departureHead);
 void freeDepartures(departurePtr departureHead);
 void insereDeparture(departurePtr departureHead, char* nome, int init, int takeoff);
-//void removeDeparture(departurePtr departureHead);
+void freeDepartureNode(departurePtr departureHead);
+void removeDeparture(departurePtr departureHead);
+struct departureNode departureCopy(departurePtr departurePtr); 
 departurePtr criaDepartures();
 
 #endif

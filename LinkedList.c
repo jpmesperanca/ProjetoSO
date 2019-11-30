@@ -97,6 +97,18 @@ void removeArrival(arrivalPtr arrivalHead){
     arrivalHead->nextNodePtr = aux;
 }
 
+
+
+struct arrivalNode arrivalCopy(arrivalPtr aux){
+    struct arrivalNode copy;
+    copy.nome=strdup(aux->nome);
+    copy.init=aux->init;
+    copy.eta=aux->eta;
+    copy.fuel=aux->fuel;
+    copy.nextNodePtr=NULL;
+    return copy;
+}
+
 //DEPARTURES
 
 departurePtr criaDepartures(){
@@ -138,12 +150,18 @@ void freeDepartures(departurePtr departureHead){
 
         while(departureHead != NULL){
 
-            free(departureHead->nome);
             aux = departureHead->nextNodePtr;
-            free(departureHead);
+            freeDepartureNode(departureHead);
             departureHead = aux;
         }
 }
+
+void freeDepartureNode(departurePtr departureHead){
+
+    free(departureHead->nome);
+    free(departureHead);
+}
+
 
 void printDepartures(departurePtr departureHead){
 
@@ -155,4 +173,23 @@ void printDepartures(departurePtr departureHead){
         	aux = aux->nextNodePtr;
         } 
     printf("------\n");
+}
+
+void removeDeparture(departurePtr departureHead){
+
+    departurePtr aux = departureHead->nextNodePtr->nextNodePtr;
+
+    freeDepartureNode(departureHead->nextNodePtr);
+
+    departureHead->nextNodePtr = aux;
+}
+
+
+struct departureNode departureCopy(departurePtr aux){
+    struct departureNode copy;
+    copy.nome=strdup(aux->nome);
+    copy.init=aux->init;
+    copy.takeoff=aux->takeoff;
+    copy.nextNodePtr=NULL;
+    return copy;
 }
