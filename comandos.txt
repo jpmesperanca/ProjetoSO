@@ -1,3 +1,6 @@
 ARRIVAL TP0 init: 20 eta: 20 fuel: 10000
 ARRIVAL TP1 init: 10 eta: 30 fuel: 10000
 ARRIVAL TP2 init: 40 eta: 40 fuel: 10000
+ARRIVAL TP0 init: 20 eta: 20 fuel: 10000
+ARRIVAL TP1 init: 10 eta: 30 fuel: 10000
+ARRIVAL TP2 init: 40 eta: 40 fuel: 10000

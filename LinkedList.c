@@ -99,13 +99,13 @@ void removeArrival(arrivalPtr arrivalHead){
 
 
 
-struct arrivalNode arrivalCopy(arrivalPtr aux){
-    struct arrivalNode copy;
-    copy.nome=strdup(aux->nome);
-    copy.init=aux->init;
-    copy.eta=aux->eta;
-    copy.fuel=aux->fuel;
-    copy.nextNodePtr=NULL;
+arrivalPtr arrivalCopy(arrivalPtr aux){
+    arrivalPtr copy;
+    copy->nome=strdup(aux->nome);
+    copy->init=aux->init;
+    copy->eta=aux->eta;
+    copy->fuel=aux->fuel;
+    copy->nextNodePtr=NULL;
     return copy;
 }
 
@@ -185,12 +185,12 @@ void removeDeparture(departurePtr departureHead){
 }
 
 
-struct departureNode departureCopy(departurePtr aux){
-    struct departureNode copy;
-    copy.nome=strdup(aux->nome);
-    copy.init=aux->init;
-    copy.takeoff=aux->takeoff;
-    copy.nextNodePtr=NULL;
+departurePtr departureCopy(departurePtr aux){
+    departurePtr copy;
+    copy->nome=strdup(aux->nome);
+    copy->init=aux->init;
+    copy->takeoff=aux->takeoff;
+    copy->nextNodePtr=NULL;
     return copy;
 }
 
