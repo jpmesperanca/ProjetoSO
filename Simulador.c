@@ -32,12 +32,29 @@
 typedef struct messageQueue* messageQueuePtr;
 typedef struct messageQueue{
 
-  long messageType;
+	long messageType;
 
-  char* message;
-  int shmSlot; 
-
+	int fuel;
+	int tempoDesejado;
+  
 } messageStruct;
+
+typedef struct replyQueue* replyQueuePtr;
+typedef struct replyQueue{
+
+	long messageType;
+
+	int id;
+
+} replyStruct;
+
+typedef struct shmSlots* shmSlotsPtr;
+typedef struct shmSlots{
+
+	char ordem[15];
+	int inUse;
+
+} shmSlotsStruct;
 
 typedef struct baseValuesStruct* valuesStructPtr;
 typedef struct baseValuesStruct{
@@ -54,14 +71,15 @@ typedef struct baseValuesStruct{
 
 } valuesStruct;
 
-typedef struct sharedMemStruct* memoryPtr;
+
+typedef struct sharedMemStruct* memoryPtr ;
 typedef struct sharedMemStruct{
 
-	valuesStructPtr valuesPtr; 
 	struct tm * structHoras;
 	struct timespec Time;
 
 } memStruct;
+
 
 void controlTower();
 void flightManager();
@@ -78,18 +96,23 @@ void endLog();
 
 void *timerCount();
 void timeComparator();
+void initializeSlots();
 void *ArrivalFlight(void* );
 void *DepartureFlight(void* );
-
+void newDeparture(messageQueuePtr mensagem);
+void newArrival(messageQueuePtr mensagem);
 messageQueuePtr criaMQStruct();
+replyQueuePtr criaReplyStruct();
 void criaMessageQueue();
 void testMQ();
+
 
 //Exit Condition
 int isActive= 1;
 
 //MESSAGE QUEUE
 int messageQueueID;
+sem_t* msgsem;
 
 //SHARED MEMORY
 memoryPtr sharedMemPtr;
@@ -118,15 +141,26 @@ FILE *logFile;
 arrivalPtr arrivalHead;
 departurePtr departureHead;
 
+valuesStructPtr valuesPtr; 
+shmSlotsPtr arrivals;
+shmSlotsPtr departures;
+
+
 int main() {
 
 	pid_t childPid;
 
-	signal(SIGINT,terminate);
+	//signal(SIGINT,terminate);
+	
+	readConfig();
+	criaSharedMemory();
+	criaMessageQueue();
+	
 	childPid = fork();
 
 	if (childPid == 0){
 		controlTower();
+		printf("Exiting ct\n");
 		exit(0);
 	}
 	
@@ -141,10 +175,63 @@ int main() {
 
 
 void controlTower() {
-	printf("CT - Doing work!\n");
-	sleep(2);
-	printf("CT - Well, there's no work, going home\n");
-	exit(0);
+
+	int totalVoos = 0;
+
+	queuePtr arrivalQueue = criaQueue();
+	queuePtr departureQueue = criaQueue();
+
+	messageQueuePtr mensagem = criaMQStruct();
+
+	while(isActive == 1){
+
+		msgrcv(messageQueueID, mensagem, sizeof(messageStruct), -2, 0);
+
+		if (mensagem->fuel == -1)
+			newDeparture(mensagem);
+		
+		else
+			newArrival(mensagem);
+	}
+}
+
+
+void newDeparture(messageQueuePtr mensagem){
+
+	replyQueuePtr reply = criaReplyStruct();
+
+	printf("NEW DEPARTURE -- td: %d\n", mensagem->tempoDesejado);
+
+	reply->messageType = 1;
+	reply->id = 0;
+	strcpy(departures[0].ordem, "HOLDING420");
+	msgsnd(messageQueueID, reply, sizeof(replyStruct), 0);
+}
+
+
+void newArrival(messageQueuePtr mensagem){
+
+	replyQueuePtr reply = criaReplyStruct();
+
+	printf("NEW ARRIVAL -- fuel: %d, td: %d\n", mensagem->fuel, mensagem->tempoDesejado);
+
+	reply->messageType = 3;
+	reply->id = 0;
+	/*
+	strcpy(arrivals[0].ordem,"HOLDING420");
+	printf("%s\n", arrivals[0].ordem);*/
+	msgsnd(messageQueueID, reply, sizeof(replyStruct), 0);
+}
+
+
+void initializeSlots(){
+
+	int i;
+
+	for (i = 0; i < valuesPtr->maxChegadas; i++){
+		arrivals[i].inUse = 2;}
+	for (i = 0; i < valuesPtr->maxPartidas; i++)
+		departures[i].inUse = 2;
 }
 
 
@@ -154,26 +241,19 @@ void flightManager() {
 	char letra;
 	int fdNamedPipe, i , result;
 
-	criaSharedMemory();
-	criaMessageQueue();
-
 	result = clock_gettime(CLOCK_REALTIME, &sharedMemPtr->Time);
     if (result == -1) {
         perror("clock_gettime");
         exit(EXIT_FAILURE);
     }
 
+
 	logFile = fopen("Logfile.txt", "w");
 
 	arrivalHead = criaArrivals();
 	departureHead = criaDepartures();
-
-
-	readConfig();
 	
 	pthread_create(&timeThread,NULL,timerCount,NULL);
-	
-	//testMQ();
 
 	fdNamedPipe = criaPipe();
 	calculaHora();
@@ -184,8 +264,8 @@ void flightManager() {
 
 		i = 0;
 
-
 		read(fdNamedPipe,&letra,1);
+
 		while ( letra != '\n') {
 			comando[i++] = letra;
 			read(fdNamedPipe,&letra,1);	
@@ -198,7 +278,7 @@ void flightManager() {
 		else if ((comando[0] == 'A') && (confirmaSintaxe(comando, ARRIVAL_PATTERN) == 1)){
 
 			processaArrival(comando);
-			//printArrivals(sharedMemPtr->arrivalHead);
+			//printArrivals(arrivalHead);
 		}
 
 		else if ((comando[0] == 'D') && (confirmaSintaxe(comando, DEPARTURE_PATTERN) == 1)){
@@ -207,9 +287,7 @@ void flightManager() {
 			//printDepartures(sharedMemPtr->departureHead);
 		}
 
-		else{
-			insertLogfile("WRONG COMMAND =>",comando);
-		}
+		else insertLogfile("WRONG COMMAND =>",comando);
 	}
 
 }
@@ -217,7 +295,9 @@ void flightManager() {
 
 void criaSharedMemory(){
 
-	if ((shmid = shmget(IPC_PRIVATE, sizeof(memStruct), IPC_CREAT | 0700)) < 1) {
+	int maxVoos = valuesPtr->maxPartidas + valuesPtr->maxChegadas;
+
+	if ((shmid = shmget(IPC_PRIVATE, sizeof(memStruct)+(maxVoos*sizeof(shmSlotsStruct)), IPC_CREAT | 0777)) < 1) {
 		perror("Error creating shared memory\n");
 		exit(1);
 	}
@@ -226,6 +306,14 @@ void criaSharedMemory(){
 		perror("Error in shmat\n");
 		exit(1);
 	}
+
+	departures = (shmSlotsPtr)malloc(sizeof(shmSlotsStruct)*(valuesPtr->maxPartidas));
+	arrivals = (shmSlotsPtr)malloc(sizeof(shmSlotsStruct)*(valuesPtr->maxChegadas));
+
+	initializeSlots(arrivals, departures);
+
+	departures = (shmSlotsPtr)shmat(shmid, NULL, 0);
+	arrivals = (shmSlotsPtr)shmat(shmid, NULL, 0);
 }
 
 
@@ -234,20 +322,6 @@ void criaMessageQueue(){
 	messageQueueID = msgget(IPC_PRIVATE, IPC_CREAT | 0777);
 }
 
-void testMQ(){
-	
-	messageQueuePtr enviar = criaMQStruct();
-	messageQueuePtr msgrecebida = criaMQStruct();
-
-	enviar->message = "Test Message";
-	enviar->messageType = 1;
-
-	msgsnd(messageQueueID, enviar, sizeof(messageStruct), 0);
-	sleep(1);
-	msgrcv(messageQueueID, msgrecebida, sizeof(messageStruct), 1, 0);
-
-	printf("MENSAGEM RECEBIDA: %s\n", msgrecebida->message);
-}
 
 messageQueuePtr criaMQStruct(){
 
@@ -255,11 +329,24 @@ messageQueuePtr criaMQStruct(){
 
 	if (new != NULL){
 		new->messageType = -1;
-		new->message = malloc(CINQ*sizeof(char));
-		new->shmSlot = -1;
+		new->fuel = -1;
+		new->tempoDesejado = -1;
 	}
 	return new;
 }
+
+
+replyQueuePtr criaReplyStruct(){
+
+	replyQueuePtr new = malloc(sizeof(replyStruct));
+
+	if (new != NULL){
+		new->messageType = -1;
+		new->id = -1;
+	}
+	return new;
+}
+
 
 int criaPipe(){
 	
@@ -302,21 +389,21 @@ void *timerCount(){
    		}
 
    		else if(departureHead->nextNodePtr == NULL && arrivalHead->nextNodePtr != NULL)
- 			tempo = arrivalHead->nextNodePtr->init * sharedMemPtr->valuesPtr->unidadeTempo;
+ 			tempo = arrivalHead->nextNodePtr->init * valuesPtr->unidadeTempo;
 
  		else if (arrivalHead->nextNodePtr == NULL && departureHead->nextNodePtr != NULL)
- 			tempo = departureHead->nextNodePtr->init * sharedMemPtr->valuesPtr->unidadeTempo;
+ 			tempo = departureHead->nextNodePtr->init * valuesPtr->unidadeTempo;
 
  		else if (arrivalHead->nextNodePtr->init <= departureHead->nextNodePtr->init)
- 			tempo = arrivalHead->nextNodePtr->init * sharedMemPtr->valuesPtr->unidadeTempo;
+ 			tempo = arrivalHead->nextNodePtr->init * valuesPtr->unidadeTempo;
 
  		else if (arrivalHead->nextNodePtr->init > departureHead->nextNodePtr->init)
- 			tempo = departureHead->nextNodePtr->init * sharedMemPtr->valuesPtr->unidadeTempo;
+ 			tempo = departureHead->nextNodePtr->init * valuesPtr->unidadeTempo;
 
 
  		tempo_sec = tempo/1000;
  		tempo_nsec = (tempo%1000)*1000000;
-
+ 		
 
  		timetoWait.tv_sec =sharedMemPtr->Time.tv_sec + tempo_sec + (tempo_nsec + sharedMemPtr->Time.tv_nsec)/1000000000;
  		timetoWait.tv_nsec = (tempo_nsec + sharedMemPtr->Time.tv_nsec)%1000000000;
@@ -330,7 +417,6 @@ void *timerCount(){
         		exit(EXIT_FAILURE);
     		}
 	 	}
-
 	 	pthread_mutex_unlock(&timeMutex);
 	}
 }
@@ -353,7 +439,7 @@ void timeComparator(){
 	arrivalPtr arrivalAux = arrivalHead;
 	departurePtr departureAux = departureHead;
 
-	timer = ((1000* (now.tv_sec - sharedMemPtr->Time.tv_sec) + (now.tv_nsec - sharedMemPtr->Time.tv_nsec)/1000000) / sharedMemPtr->valuesPtr->unidadeTempo);
+	timer = ((1000* (now.tv_sec - sharedMemPtr->Time.tv_sec) + (now.tv_nsec - sharedMemPtr->Time.tv_nsec)/1000000) / valuesPtr->unidadeTempo);
    	while ((arrivalAux->nextNodePtr != NULL) && (arrivalAux->nextNodePtr->init == timer)){
 
    		pthread_create(&arrivalThreads[i++],NULL,ArrivalFlight,(void *)arrivalAux->nextNodePtr);
@@ -373,7 +459,6 @@ void timeComparator(){
 	sizeArrivals += i;
 	sizeDepartures += j;
 }
-
 
 int confirmaSintaxe(char* comando, char* padrao){
 
@@ -397,8 +482,10 @@ void processaArrival(char* comando){
 	int init;
 	int eta;
 	int fuel;
+
 	int result;
 	arrivalPtr aux = arrivalHead;
+	messageQueuePtr enviar;  //WHY IS THIS HERE?
 	struct timespec now;
 	
 	result = clock_gettime(CLOCK_REALTIME, &now);
@@ -409,14 +496,15 @@ void processaArrival(char* comando){
 
 
 	sscanf(comando, "ARRIVAL %s init: %d eta: %d fuel: %d", nome, &init, &eta, &fuel);
-
-	if ((fuel >= eta) && (((1000* (now.tv_sec - sharedMemPtr->Time.tv_sec) + (now.tv_nsec - sharedMemPtr->Time.tv_nsec)/1000000) / sharedMemPtr->valuesPtr->unidadeTempo) <= init)){
+	if ((fuel >= eta) && (((1000* (now.tv_sec - sharedMemPtr->Time.tv_sec) + (now.tv_nsec - sharedMemPtr->Time.tv_nsec)/1000000) / valuesPtr->unidadeTempo) <= init)){
 		pthread_cond_signal(&condTime);
 		insertLogfile("NEW COMMAND =>",comando);
 		insereArrival(aux,nome,init,eta,fuel);
 	} 
 
-	else insertLogfile("WRONG COMMAND =>",comando);
+	else{
+		insertLogfile("WRONG COMMAND =>",comando);	
+	} 
 }
 
 void processaDeparture(char* comando){
@@ -436,7 +524,8 @@ void processaDeparture(char* comando){
 
 	sscanf(comando, "DEPARTURE %s init: %d takeoff: %d", nome, &init, &takeoff);
 
-	if (((1000* (now.tv_sec - sharedMemPtr->Time.tv_sec) + (now.tv_nsec - sharedMemPtr->Time.tv_nsec)/1000000) / sharedMemPtr->valuesPtr->unidadeTempo) <= init){
+
+	if (((1000* (now.tv_sec - sharedMemPtr->Time.tv_sec) + (now.tv_nsec - sharedMemPtr->Time.tv_nsec)/1000000) / valuesPtr->unidadeTempo) <= init){
 		pthread_cond_signal(&condTime);
 		insertLogfile("NEW COMMAND =>",comando);
 		insereDeparture(aux,nome,init,takeoff);
@@ -449,31 +538,46 @@ void readConfig() {
 
 	FILE *configFile;
 
-	sharedMemPtr->valuesPtr = malloc(sizeof(valuesStruct));
+	valuesPtr = malloc(sizeof(valuesStruct));
 
 	if (!(configFile = fopen("config.txt", "r"))){
 		perror("Error opening file");
 		exit(1);
 	}
 
-	fscanf(configFile, "%d\n", &sharedMemPtr->valuesPtr->unidadeTempo);
-	fscanf(configFile, "%d, %d\n", &sharedMemPtr->valuesPtr->duracaoDescolagem, &sharedMemPtr->valuesPtr->intervaloDescolagens);
-	fscanf(configFile, "%d, %d\n", &sharedMemPtr->valuesPtr->duracaoAterragem, &sharedMemPtr->valuesPtr->intervaloAterragens);
-	fscanf(configFile, "%d, %d\n", &sharedMemPtr->valuesPtr->minHolding, &sharedMemPtr->valuesPtr->maxHolding);
-	fscanf(configFile, "%d\n", &sharedMemPtr->valuesPtr->maxPartidas);
-	fscanf(configFile, "%d\n", &sharedMemPtr->valuesPtr->maxChegadas);
+	fscanf(configFile, "%d\n", &valuesPtr->unidadeTempo);
+	fscanf(configFile, "%d, %d\n", &valuesPtr->duracaoDescolagem, &valuesPtr->intervaloDescolagens);
+	fscanf(configFile, "%d, %d\n", &valuesPtr->duracaoAterragem, &valuesPtr->intervaloAterragens);
+	fscanf(configFile, "%d, %d\n", &valuesPtr->minHolding, &valuesPtr->maxHolding);
+	fscanf(configFile, "%d\n", &valuesPtr->maxPartidas);
+	fscanf(configFile, "%d\n", &valuesPtr->maxChegadas);
 
 	fclose(configFile);
 }
 
 
 void *ArrivalFlight(void *flight){
-
+	
 	struct arrivalNode voo;
 	voo = arrivalCopy((arrivalPtr)flight);
 	removeArrival(arrivalHead);
+
+	messageQueuePtr enviar = criaMQStruct();
+	replyQueuePtr reply = criaReplyStruct();
+
 	insertLogfile("ARRIVAL STARTED =>",voo.nome);
-	usleep((sharedMemPtr->valuesPtr->duracaoAterragem) * (sharedMemPtr->valuesPtr->unidadeTempo) * 1000);
+
+	enviar->messageType = 2;
+	enviar->fuel = voo.fuel;
+	enviar->tempoDesejado = voo.init + voo.eta;
+
+	msgsnd(messageQueueID, enviar, sizeof(messageStruct), 0);
+	msgrcv(messageQueueID, reply, sizeof(replyStruct), 3, 0);
+
+	printf("O meu slot favorito é o %d!!\n", reply->id);
+	//printf("Tenho a ordem: %s\n", arrivals[reply->id].ordem);
+
+	usleep((valuesPtr->duracaoAterragem) * (valuesPtr->unidadeTempo) * 1000);
 	insertLogfile("ARRIVAL CONCLUDED =>",voo.nome);
 
 	pthread_exit(0);
@@ -485,8 +589,21 @@ void *DepartureFlight(void *flight){
 	struct departureNode voo;
 	voo = departureCopy((departurePtr)flight);
 	removeDeparture(departureHead);
+
+	messageQueuePtr enviar = criaMQStruct();
+	replyQueuePtr reply = criaReplyStruct();
+
 	insertLogfile("DEPARTURE STARTED =>",voo.nome);
-	usleep((sharedMemPtr->valuesPtr->duracaoDescolagem) * (sharedMemPtr->valuesPtr->unidadeTempo) * 1000);
+
+	enviar->messageType = 2;
+	enviar->tempoDesejado = voo.init + voo.takeoff;
+
+	msgsnd(messageQueueID, enviar, sizeof(messageStruct), 0);
+	msgrcv(messageQueueID, reply, sizeof(replyStruct), 3, 0);
+
+	printf("O meu slot favorito é o %d!!\n", reply->id);
+
+	usleep((valuesPtr->duracaoDescolagem) * (valuesPtr->unidadeTempo) * 1000);
 	insertLogfile("DEPARTURE CONCLUDED =>",voo.nome);
 	
 	pthread_exit(0);
