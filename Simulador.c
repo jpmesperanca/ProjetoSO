@@ -75,7 +75,7 @@ typedef struct sharedMemStruct{
 
 	struct tm * structHoras;
 	struct timespec Time;
-	estatisticasStruct estatisticas;
+	struct estatisticasStruct estatisticas;
 
 	int totalArrivals = 0;
 	int totalDepartures = 0;
@@ -123,6 +123,7 @@ replyQueuePtr criaReplyStruct();
 void criaMessageQueue();
 void testMQ();
 
+void *fuelUpdater();
 
 //Exit Condition
 int isActive= 1;
@@ -154,6 +155,10 @@ int sizeDepartures = 0;
 pthread_mutex_t logMutex = PTHREAD_MUTEX_INITIALIZER;
 FILE *logFile;
 
+//PTHREADS CONTROL TOWER
+pthread_t fuelThread;
+pthread_mutex_t fuelMutex = PTHREAD_MUTEX_INITIALIZER;
+
 arrivalPtr arrivalHead;
 departurePtr departureHead;
 
@@ -161,6 +166,9 @@ valuesStructPtr valuesPtr;
 shmSlotsPtr arrivals;
 shmSlotsPtr departures;
 
+
+queuePtr arrivalQueue;
+queuePtr departureQueue;
 
 int main() {
 
@@ -191,7 +199,7 @@ int main() {
 
 
 void controlTower() {
-
+	int isUpdaterCreated=0;
 	queuePtr arrivalQueue = criaQueue();
 	queuePtr departureQueue = criaQueue();
 
@@ -209,15 +217,56 @@ void controlTower() {
 		else{
 			newArrival(mensagem);
 			sharedMemPtr->totalArrivals++;
+			if (isUpdaterCreated == 0){
+				pthread_create(&fuelThread,NULL,fuelUpdater,NULL);
+				isUpdaterCreated = 1;
+			}
 		}
 	}
 }
+
+void *fuelUpdater(){
+
+	int result;
+	struct timespec tempo = {0};
+	queuePtr arrivalAux = arrivalQueue;
+
+	result = clock_gettime(CLOCK_REALTIME, &tempo);
+    if (result == -1) {
+        perror("clock_gettime");
+        exit(EXIT_FAILURE);
+    }
+    tempo.tv_nsec = (tempo.tv_nsec + valuesPtr->unidadeTempo*1000000) % 1000000000;
+    tempo.tv_sec = tempo.tv_sec +(tempo.tv_nsec + valuesPtr->unidadeTempo*1000000) / 1000000000;
+	while(isActive){
+		result=clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME,&tempo,NULL);
+		if (result !=0 ){
+			fprintf(stderr, "%s\n", strerror(result));
+			exit(EXIT_FAILURE);
+		}
+		printf("stuck1?\n");
+
+		//EU NAO SEI BEM COMO ESTAO AS QUEUES
+		while(arrivalAux->nextNodePtr !=NULL){
+			printf("stuck?\n");
+			if(arrivalAux >0) arrivalAux->fuel--;
+			printf("FUEL: %d\n",arrivalAux->fuel);
+			arrivalAux =arrivalAux->nextNodePtr;
+		}
+		printf("HERE\n");
+		arrivalAux= arrivalQueue;
+		tempo.tv_nsec = (tempo.tv_nsec + valuesPtr->unidadeTempo)*1000000 % 1000000000;
+    	tempo.tv_sec = tempo.tv_sec +(tempo.tv_nsec + valuesPtr->unidadeTempo)*1000000 / 1000000000;
+	}
+}
+
+
 
 
 void newDeparture(messageQueuePtr mensagem){
 
 	replyQueuePtr reply = criaReplyStruct();
-
+	insereQueue(departureQueue,mensagem->tempoDesejado,mensagem->fuel);
 	printf("NEW DEPARTURE -- td: %d\n", mensagem->tempoDesejado);
 
 	reply->messageType = 1;
@@ -230,7 +279,7 @@ void newDeparture(messageQueuePtr mensagem){
 void newArrival(messageQueuePtr mensagem){
 
 	replyQueuePtr reply = criaReplyStruct();
-
+	insereQueue(arrivalQueue,mensagem->tempoDesejado,mensagem->fuel);
 	printf("NEW ARRIVAL -- fuel: %d, td: %d\n", mensagem->fuel, mensagem->tempoDesejado);
 
 	reply->messageType = 3;
