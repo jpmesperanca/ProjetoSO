@@ -56,6 +56,32 @@ typedef struct shmSlots{
 
 } shmSlotsStruct;
 
+typedef struct estatisticasStruct* estatisticasPtr;
+typedef struct estatisticasStruct{
+
+	int totalVoos;
+	int totalArrivals;
+	int totalDepartures;
+	int numeroVoosRedirecionados;
+	float tempoMedioEsperaA;
+	float tempoMedioEsperaD;
+	float mediaManobrasHolding;
+	float mediaManobrasHoldingPrio;
+};
+
+
+typedef struct sharedMemStruct* memoryPtr ;
+typedef struct sharedMemStruct{
+
+	struct tm * structHoras;
+	struct timespec Time;
+	estatisticasStruct estatisticas;
+
+	int totalArrivals = 0;
+	int totalDepartures = 0;
+
+} memStruct;
+
 typedef struct baseValuesStruct* valuesStructPtr;
 typedef struct baseValuesStruct{
 
@@ -70,15 +96,6 @@ typedef struct baseValuesStruct{
 	int maxChegadas;
 
 } valuesStruct;
-
-
-typedef struct sharedMemStruct* memoryPtr ;
-typedef struct sharedMemStruct{
-
-	struct tm * structHoras;
-	struct timespec Time;
-
-} memStruct;
 
 
 void controlTower();
@@ -106,7 +123,6 @@ replyQueuePtr criaReplyStruct();
 void criaMessageQueue();
 void testMQ();
 
-void *fuelUpdater();
 
 //Exit Condition
 int isActive= 1;
@@ -117,17 +133,15 @@ sem_t* msgsem;
 
 //SHARED MEMORY
 memoryPtr sharedMemPtr;
-int shmid;
+int shmid, shmidDepartures, shmidArrivals;
 
-//PTHREADS TIME
+//PTHREADS
 pthread_mutex_t timeMutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t condTime = PTHREAD_COND_INITIALIZER;
 pthread_cond_t creator = PTHREAD_COND_INITIALIZER;
 pthread_t timeThread;
 
 //PTHREADS ARRIVALS
-
-
 //pthread_mutex_t arrivalMutex = PTHREAD_MUTEX_INITIALIZER;	/* ŃOT USED YET*/
 pthread_t arrivalThreads[LIMITEVOOS];
 int sizeArrivals = 0;
@@ -137,12 +151,6 @@ int sizeArrivals = 0;
 pthread_t departureThreads[LIMITEVOOS];
 int sizeDepartures = 0;
 
-
-//PTHREADS CONTROL TOWER
-pthread_t fuelThread;
-pthread_mutex_t fuelMutex = PTHREAD_MUTEX_INITIALIZER;
-
-//PTHREAD LOGFILE
 pthread_mutex_t logMutex = PTHREAD_MUTEX_INITIALIZER;
 FILE *logFile;
 
@@ -153,14 +161,12 @@ valuesStructPtr valuesPtr;
 shmSlotsPtr arrivals;
 shmSlotsPtr departures;
 
-queuePtr arrivalQueue;
-queuePtr departureQueue;
 
 int main() {
 
 	pid_t childPid;
 
-	signal(SIGINT,terminate);
+	//signal(SIGINT,terminate);
 	
 	readConfig();
 	criaSharedMemory();
@@ -186,8 +192,6 @@ int main() {
 
 void controlTower() {
 
-	int totalVoos = 0;
-	int isUpdaterCreated =0;
 	queuePtr arrivalQueue = criaQueue();
 	queuePtr departureQueue = criaQueue();
 
@@ -196,51 +200,16 @@ void controlTower() {
 	while(isActive == 1){
 
 		msgrcv(messageQueueID, mensagem, sizeof(messageStruct), -2, 0);
-		if (mensagem->fuel == -1)
+
+		if (mensagem->fuel == -1){
 			newDeparture(mensagem);
+			sharedMemPtr->totalDepartures++
+		}
 		
 		else{
 			newArrival(mensagem);
-			if (isUpdaterCreated == 0){
-				pthread_create(&fuelThread,NULL,fuelUpdater,NULL);
-				isUpdaterCreated = 1;
-			}
+			sharedMemPtr->totalArrivals++;
 		}
-	}
-}
-
-void *fuelUpdater(){
-
-	int result;
-	struct timespec tempo = {0};
-	queuePtr arrivalAux = arrivalQueue;
-
-	result = clock_gettime(CLOCK_REALTIME, &tempo);
-    if (result == -1) {
-        perror("clock_gettime");
-        exit(EXIT_FAILURE);
-    }
-    tempo.tv_nsec = (tempo.tv_nsec + valuesPtr->unidadeTempo*1000000) % 1000000000;
-    tempo.tv_sec = tempo.tv_sec +(tempo.tv_nsec + valuesPtr->unidadeTempo*1000000) / 1000000000;
-	while(isActive){
-		result=clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME,&tempo,NULL);
-		if (result !=0 ){
-			fprintf(stderr, "%s\n", strerror(result));
-			exit(EXIT_FAILURE);
-		}
-		printf("stuck1?\n");
-
-		//EU NAO SEI BEM COMO ESTAO AS QUEUES
-		while(arrivalAux->nextNodePtr !=NULL){
-			printf("stuck?\n");
-			if(arrivalAux >0) arrivalAux->fuel--;
-			printf("FUEL: %d\n",arrivalAux->fuel);
-			arrivalAux =arrivalAux->nextNodePtr;
-		}
-		printf("HERE\n");
-		arrivalAux= arrivalQueue;
-		tempo.tv_nsec = (tempo.tv_nsec + valuesPtr->unidadeTempo)*1000000 % 1000000000;
-    	tempo.tv_sec = tempo.tv_sec +(tempo.tv_nsec + valuesPtr->unidadeTempo)*1000000 / 1000000000;
 	}
 }
 
@@ -248,7 +217,7 @@ void *fuelUpdater(){
 void newDeparture(messageQueuePtr mensagem){
 
 	replyQueuePtr reply = criaReplyStruct();
-	insereQueue(departureQueue,mensagem->tempoDesejado,mensagem->fuel);
+
 	printf("NEW DEPARTURE -- td: %d\n", mensagem->tempoDesejado);
 
 	reply->messageType = 1;
@@ -261,7 +230,7 @@ void newDeparture(messageQueuePtr mensagem){
 void newArrival(messageQueuePtr mensagem){
 
 	replyQueuePtr reply = criaReplyStruct();
-	insereQueue(arrivalQueue,mensagem->tempoDesejado,mensagem->fuel);
+
 	printf("NEW ARRIVAL -- fuel: %d, td: %d\n", mensagem->fuel, mensagem->tempoDesejado);
 
 	reply->messageType = 3;
@@ -269,6 +238,7 @@ void newArrival(messageQueuePtr mensagem){
 	
 	strcpy(arrivals[0].ordem,"HOLDING420");
 	printf("%s\n", arrivals[0].ordem);
+
 	msgsnd(messageQueueID, reply, sizeof(replyStruct), 0);
 }
 
@@ -346,7 +316,7 @@ void criaSharedMemory(){
 
 	int maxVoos = valuesPtr->maxPartidas + valuesPtr->maxChegadas;
 
-	if ((shmid = shmget(IPC_PRIVATE, sizeof(memStruct)+(maxVoos*sizeof(shmSlotsStruct)), IPC_CREAT | 0777)) < 1) {
+	if ((shmid = shmget(IPC_PRIVATE, sizeof(memStruct), IPC_CREAT | 0777)) < 1) {
 		perror("Error creating shared memory\n");
 		exit(1);
 	}
@@ -361,16 +331,26 @@ void criaSharedMemory(){
 
 	initializeSlots();
 
-	if ((departures = (shmSlotsPtr)shmat(shmid, NULL, 0) + sizeof(memStruct)) < (shmSlotsPtr)1) {
+	if ((shmidDepartures = shmget(IPC_PRIVATE, valuesPtr->maxPartidas*sizeof(shmSlotsStruct), IPC_CREAT | 0777)) < 1) {
+		perror("Error creating shared memory\n");
+		exit(1);
+	}
+
+	if ((departures = (shmSlotsPtr)shmat(shmidDepartures, NULL, 0)) < (shmSlotsPtr)1) {
 		perror("Error in departures shmat\n");
 		exit(1);
 	}
-	if ((arrivals = (shmSlotsPtr)shmat(shmid, NULL, 0) + sizeof(memStruct) + valuesPtr->maxPartidas*sizeof(shmSlotsStruct)) < (shmSlotsPtr)1) {
+
+	if ((shmidArrivals = shmget(IPC_PRIVATE, valuesPtr->maxChegadas*sizeof(shmSlotsStruct), IPC_CREAT | 0777)) < 1) {
+		perror("Error creating shared memory\n");
+		exit(1);
+	}
+
+	if ((arrivals = (shmSlotsPtr)shmat(shmidArrivals, NULL, 0)) < (shmSlotsPtr)1){
 		perror("Error in arrivals shmat\n");
 		exit(1);
 	}
 }
-
 
 void criaMessageQueue(){
 
@@ -497,11 +477,13 @@ void *timerCount(){
 
 
         if (aux ==0){
+        	printf("a\n");
             result = pthread_cond_timedwait(&condTime,&timeMutex,&timetoWait);
             if (result !=0  && result != ETIMEDOUT) {
                 fprintf(stderr, "%s\n", strerror(result));
                 exit(EXIT_FAILURE);
             }
+            printf("b\n");
          }
 
          pthread_mutex_unlock(&timeMutex);
@@ -607,10 +589,12 @@ void readConfig() {
 
 void *ArrivalFlight(void *flight){
 	
+	printf("aqui?\n");
 
 	messageQueuePtr enviar = criaMQStruct();
 	replyQueuePtr reply = criaReplyStruct();
 
+	printf("Criou o voo\n");
 
 	insertLogfile("ARRIVAL STARTED =>",((arrivalPtr)flight)->nome);
 
@@ -626,6 +610,7 @@ void *ArrivalFlight(void *flight){
 
 	usleep((valuesPtr->duracaoAterragem) * (valuesPtr->unidadeTempo) * 1000);
 	insertLogfile("ARRIVAL CONCLUDED =>",((arrivalPtr)flight)->nome);
+	sharedMemPtr->totalArrivals--;
 	pthread_exit(0);
 }
 
@@ -649,6 +634,7 @@ void *DepartureFlight(void *flight){
 	usleep((valuesPtr->duracaoDescolagem) * (valuesPtr->unidadeTempo) * 1000);
 	insertLogfile("DEPARTURE CONCLUDED =>",((departurePtr)flight)->nome);
 	
+	sharedMemPtr->totalDepartures--;
 	pthread_exit(0);
 }
 
@@ -685,6 +671,11 @@ void terminate(){
 
 	shmdt(sharedMemPtr);
 	shmctl(shmid,IPC_RMID,NULL);
+	shmdt(departures);
+	shmctl(shmidDepartures,IPC_RMID,NULL);
+	shmdt(arrivals);
+	shmctl(shmidArrivals,IPC_RMID,NULL);
+
 
 	fclose(logFile);
 	printf("Dappertutto!\n");
