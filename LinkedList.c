@@ -220,14 +220,19 @@ void insereQueue(queuePtr queueHead, int tempoDesejado, int fuel){
     queuePtr novo = criaQueue();
     queuePtr aux = queueHead;
 
-    while((aux->nextNodePtr != NULL) && (aux->nextNodePtr->tempoDesejado <= tempoDesejado))
+    printf("TEMPO -- %d FUEL -- %d\n", queueHead->tempoDesejado, queueHead->fuel);
+    while((aux->nextNodePtr != NULL) && (aux->nextNodePtr->tempoDesejado < tempoDesejado)){
+        printf("INSERE QUEUE WHILE\n");
         aux = aux->nextNodePtr;
+        printf("INSERE QUEUE WHILE\n");
+    }
 
+    printf("INSERE QUEUE POSWHILE\n");
     novo->nextNodePtr = aux->nextNodePtr;
     aux->nextNodePtr = novo;
 
     novo->tempoDesejado = tempoDesejado;
-    if (fuel != -1)
+    if (fuel != -1) 
         novo->fuel = fuel;
 }
 
