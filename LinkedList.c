@@ -100,12 +100,15 @@ void removeArrival(arrivalPtr arrivalHead){
 
 
 arrivalPtr arrivalCopy(arrivalPtr aux){
-    arrivalPtr copy;
+
+    arrivalPtr copy = criaArrivals();
+
     copy->nome=strdup(aux->nome);
     copy->init=aux->init;
     copy->eta=aux->eta;
     copy->fuel=aux->fuel;
     copy->nextNodePtr=NULL;
+    
     return copy;
 }
 
