@@ -218,10 +218,13 @@ void controlTower() {
 	
 		else if (sharedMemPtr->totalDepartures < valuesPtr->maxPartidas){
 			newArrival(mensagem);
-			/*if (isUpdaterCreated == 0){
+
+			printf("FUEL START: %d\n",mensagem->fuel);
+			sharedMemPtr->totalArrivals++;
+			if (isUpdaterCreated == 0){
 				pthread_create(&fuelThread,NULL,fuelUpdater,NULL);
 				isUpdaterCreated = 1;
-			}*/
+			}
 		}
 	}
 }
@@ -239,25 +242,25 @@ void *fuelUpdater(){
     }
     tempo.tv_nsec = (tempo.tv_nsec + valuesPtr->unidadeTempo*1000000) % 1000000000;
     tempo.tv_sec = tempo.tv_sec +(tempo.tv_nsec + valuesPtr->unidadeTempo*1000000) / 1000000000;
+
 	while(isActive){
+
 		result=clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME,&tempo,NULL);
-		if (result !=0 ){
+		if (result !=0 && result !=EINVAL){
 			fprintf(stderr, "%s\n", strerror(result));
 			exit(EXIT_FAILURE);
 		}
-		printf("stuck1?\n");
 
-		//EU NAO SEI BEM COMO ESTAO AS QUEUES
 		while(arrivalAux->nextNodePtr !=NULL){
-			printf("stuck?\n");
-			if(arrivalAux >0) arrivalAux->fuel--;
-			printf("FUEL: %d\n",arrivalAux->fuel);
+
+			if(arrivalAux >0) arrivalAux->nextNodePtr->fuel--;
 			arrivalAux =arrivalAux->nextNodePtr;
 		}
-		printf("HERE\n");
+
 		arrivalAux= arrivalQueue;
-		tempo.tv_nsec = (tempo.tv_nsec + valuesPtr->unidadeTempo)*1000000 % 1000000000;
-    	tempo.tv_sec = tempo.tv_sec +(tempo.tv_nsec + valuesPtr->unidadeTempo)*1000000 / 1000000000;
+
+		tempo.tv_nsec = (tempo.tv_nsec + valuesPtr->unidadeTempo*1000000) % 1000000000;
+    	tempo.tv_sec = tempo.tv_sec +(tempo.tv_nsec + valuesPtr->unidadeTempo*1000000) / 1000000000;
 	}
 }
 
@@ -681,6 +684,7 @@ void *ArrivalFlight(void *flight){
 
 	usleep((valuesPtr->duracaoAterragem) * (valuesPtr->unidadeTempo) * 1000);
 	insertLogfile("ARRIVAL CONCLUDED =>",((arrivalPtr)flight)->nome);
+
 	sharedMemPtr->totalArrivals--;
 	pthread_exit(0);
 }
