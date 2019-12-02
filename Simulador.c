@@ -204,7 +204,6 @@ void controlTower() {
 	int isUpdaterCreated=0;
 
 	arrivalQueue = criaQueue();
-
 	departureQueue = criaQueue();
 
 	messageQueuePtr mensagem = criaMQStruct();
@@ -212,16 +211,14 @@ void controlTower() {
 	while(isActive == 1){
 
 		msgrcv(messageQueueID, mensagem, sizeof(messageStruct), -2, 0);
-	
-		if (mensagem->fuel == -1){
+
+		if (mensagem->fuel == -1 && sharedMemPtr->totalArrivals < valuesPtr->maxChegadas)
 			newDeparture(mensagem);
-			sharedMemPtr->totalDepartures++;
-		}
 		
-		else{
+	
+		else if (sharedMemPtr->totalDepartures < valuesPtr->maxPartidas){
 			newArrival(mensagem);
-			sharedMemPtr->totalArrivals++;/*
-			if (isUpdaterCreated == 0){
+			/*if (isUpdaterCreated == 0){
 				pthread_create(&fuelThread,NULL,fuelUpdater,NULL);
 				isUpdaterCreated = 1;
 			}*/
@@ -265,12 +262,12 @@ void *fuelUpdater(){
 }
 
 
-
-
 void newDeparture(messageQueuePtr mensagem){
 
 	replyQueuePtr reply = criaReplyStruct();
+
 	insereQueue(departureQueue,mensagem->tempoDesejado,mensagem->fuel);
+
 	printf("NEW DEPARTURE -- td: %d\n", mensagem->tempoDesejado);
 
 	reply->messageType = 1;
@@ -278,6 +275,9 @@ void newDeparture(messageQueuePtr mensagem){
 
 	strcpy(departures[0].ordem, "HOLDING420");
 	msgsnd(messageQueueID, reply, sizeof(replyStruct), 0);
+
+	sharedMemPtr->totalDepartures++;
+	sharedMemPtr->estatisticas.totalVoos++;
 }
 
 
@@ -293,6 +293,9 @@ void newArrival(messageQueuePtr mensagem){
 	strcpy(arrivals[0].ordem,"HOLDING420");
 
 	msgsnd(messageQueueID, reply, sizeof(replyStruct), 0);
+
+	sharedMemPtr->totalArrivals++;
+	sharedMemPtr->estatisticas.totalVoos++;
 }
 
 
