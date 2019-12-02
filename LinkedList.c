@@ -215,12 +215,18 @@ queuePtr criaQueue(){
     return aux;
 }
 
-void insereQueue(queuePtr queueHead, int tempoDesejado, int fuel, int aux){
+void insereQueue(queuePtr queueHead, int tempoDesejado, int fuel, int prio){
 
     queuePtr novo = criaQueue();
     queuePtr aux = queueHead;
 
-    while((aux->nextNodePtr != NULL) && (aux->nextNodePtr->tempoDesejado < tempoDesejado) && aux != 1){
+    if (prio != 1){
+	    while((aux->nextNodePtr != NULL) && (aux->nextNodePtr->tempoDesejado < tempoDesejado)){
+	        aux = aux->nextNodePtr;
+	    }
+	}
+
+    while((aux->nextNodePtr != NULL) && (aux->nextNodePtr->fuel < fuel)){
         aux = aux->nextNodePtr;
     }
 
@@ -228,6 +234,7 @@ void insereQueue(queuePtr queueHead, int tempoDesejado, int fuel, int aux){
     aux->nextNodePtr = novo;
 
     novo->tempoDesejado = tempoDesejado;
+    novo->prio = prio;
     if (fuel != -1) 
         novo->fuel = fuel;
 }
@@ -277,4 +284,3 @@ void printArrivalQueue(queuePtr queueHead){
         } 
     printf("------\n");
 }
-

@@ -209,7 +209,7 @@ void controlTower() {
 	messageQueuePtr mensagem = criaMQStruct();
 
 	while(isActive == 1){
-
+		
 		msgrcv(messageQueueID, mensagem, sizeof(messageStruct), -2, 0);
 
 		if (mensagem->fuel == -1 && sharedMemPtr->totalArrivals < valuesPtr->maxChegadas)
@@ -219,8 +219,6 @@ void controlTower() {
 		else if (sharedMemPtr->totalDepartures < valuesPtr->maxPartidas){
 			newArrival(mensagem);
 
-			printf("FUEL START: %d\n",mensagem->fuel);
-			sharedMemPtr->totalArrivals++;
 			if (isUpdaterCreated == 0){
 				pthread_create(&fuelThread,NULL,fuelUpdater,NULL);
 				isUpdaterCreated = 1;
@@ -243,9 +241,9 @@ void *fuelUpdater(){
     tempo.tv_nsec = (tempo.tv_nsec + valuesPtr->unidadeTempo*1000000) % 1000000000;
     tempo.tv_sec = tempo.tv_sec +(tempo.tv_nsec + valuesPtr->unidadeTempo*1000000) / 1000000000;
 
-	while(isActive){
+	while(isActive == 1){
 
-		result=clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME,&tempo,NULL);
+		result = clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME,&tempo,NULL);
 		if (result !=0 && result !=EINVAL){
 			fprintf(stderr, "%s\n", strerror(result));
 			exit(EXIT_FAILURE);
@@ -273,7 +271,7 @@ void newDeparture(messageQueuePtr mensagem){
 
 	printf("NEW DEPARTURE -- td: %d\n", mensagem->tempoDesejado);
 
-	reply->messageType = 1;
+	reply->messageType = 3;
 	reply->id = 0;
 
 	strcpy(departures[0].ordem, "HOLDING420");
@@ -288,8 +286,10 @@ void newArrival(messageQueuePtr mensagem){
 
 	replyQueuePtr reply = criaReplyStruct();
 
-	if 
-	insereQueue(arrivalQueue,mensagem->tempoDesejado,mensagem->fuel,0);
+	if (4 + mensagem->tempoDesejado + valuesPtr->duracaoAterragem >= mensagem->fuel)
+		insereQueue(arrivalQueue,mensagem->tempoDesejado,mensagem->fuel,1);
+	
+	else insereQueue(arrivalQueue,mensagem->tempoDesejado,mensagem->fuel,0);
 
 	reply->messageType = 3;
 	reply->id = 0;
@@ -673,9 +673,14 @@ void *ArrivalFlight(void *flight){
 
 	insertLogfile("ARRIVAL STARTED =>",((arrivalPtr)flight)->nome);
 
-	enviar->messageType = 2;
 	enviar->fuel = ((arrivalPtr)flight)->fuel;
 	enviar->tempoDesejado = ((arrivalPtr)flight)->init + ((arrivalPtr)flight)->eta;
+	
+	if (4 + enviar->tempoDesejado + valuesPtr->duracaoAterragem >= enviar->fuel)
+		enviar->messageType = 2;
+	
+	else
+		enviar->messageType = 1;
 
 	msgsnd(messageQueueID, enviar, sizeof(messageStruct), 0);
 	msgrcv(messageQueueID, reply, sizeof(replyStruct), 3, 0);
