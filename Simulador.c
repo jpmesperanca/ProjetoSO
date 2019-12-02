@@ -266,7 +266,7 @@ void newDeparture(messageQueuePtr mensagem){
 
 	replyQueuePtr reply = criaReplyStruct();
 
-	insereQueue(departureQueue,mensagem->tempoDesejado,mensagem->fuel);
+	insereQueue(departureQueue,mensagem->tempoDesejado,mensagem->fuel,0);
 
 	printf("NEW DEPARTURE -- td: %d\n", mensagem->tempoDesejado);
 
@@ -285,7 +285,8 @@ void newArrival(messageQueuePtr mensagem){
 
 	replyQueuePtr reply = criaReplyStruct();
 
-	insereQueue(arrivalQueue,mensagem->tempoDesejado,mensagem->fuel);
+	if 
+	insereQueue(arrivalQueue,mensagem->tempoDesejado,mensagem->fuel,0);
 
 	reply->messageType = 3;
 	reply->id = 0;

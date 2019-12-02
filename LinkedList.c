@@ -215,12 +215,12 @@ queuePtr criaQueue(){
     return aux;
 }
 
-void insereQueue(queuePtr queueHead, int tempoDesejado, int fuel){
+void insereQueue(queuePtr queueHead, int tempoDesejado, int fuel, int aux){
 
     queuePtr novo = criaQueue();
     queuePtr aux = queueHead;
 
-    while((aux->nextNodePtr != NULL) && (aux->nextNodePtr->tempoDesejado < tempoDesejado)){
+    while((aux->nextNodePtr != NULL) && (aux->nextNodePtr->tempoDesejado < tempoDesejado) && aux != 1){
         aux = aux->nextNodePtr;
     }
 
