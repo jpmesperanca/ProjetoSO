@@ -126,6 +126,9 @@ void criaMessageQueue();
 void testMQ();
 
 void *fuelUpdater();
+void *flightPlanner();
+void Aterragem(struct timespec tempo);
+void Descolagem(struct timespec tempo);
 
 //Exit Condition
 int isActive= 1;
@@ -158,8 +161,14 @@ pthread_mutex_t logMutex = PTHREAD_MUTEX_INITIALIZER;
 FILE *logFile;
 
 //PTHREADS CONTROL TOWER
-pthread_t fuelThread;
+pthread_t fuelThread, decisionThread;
 pthread_mutex_t fuelMutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t decisionMutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t condArrival = PTHREAD_COND_INITIALIZER;
+pthread_cond_t condDeparture = PTHREAD_COND_INITIALIZER;
+pthread_cond_t condGeral = PTHREAD_COND_INITIALIZER;
+
+int PISTAS[4];
 
 arrivalPtr arrivalHead;
 departurePtr departureHead;
@@ -175,7 +184,7 @@ int main() {
 
 	pid_t childPid;
 
-	//signal(SIGINT,terminate);
+	signal(SIGINT,terminate);
 	
 	readConfig();
 	criaSharedMemory();
@@ -201,7 +210,8 @@ int main() {
 
 void controlTower() {
 
-	int isUpdaterCreated=0;
+	int isUpdaterCreated = 0;
+	int isDecisionCreated = 0;
 
 	arrivalQueue = criaQueue();
 	departureQueue = criaQueue();
@@ -212,8 +222,9 @@ void controlTower() {
 
 		msgrcv(messageQueueID, mensagem, sizeof(messageStruct), -2, 0);
 
-		if (mensagem->fuel == -1 && sharedMemPtr->totalArrivals < valuesPtr->maxChegadas)
+		if (mensagem->fuel == -1 && sharedMemPtr->totalArrivals < valuesPtr->maxChegadas){
 			newDeparture(mensagem);
+		}
 		
 	
 		else if (sharedMemPtr->totalDepartures < valuesPtr->maxPartidas){
@@ -226,8 +237,97 @@ void controlTower() {
 				isUpdaterCreated = 1;
 			}
 		}
+
+		if (isDecisionCreated = 0){
+			pthread_create(&decisionThread,NULL,flightPlanner,NULL);
+			isDecisionCreated = 1;
+		}
+
 	}
 }
+
+	int unidadeTempo;
+	int duracaoDescolagem;
+	int intervaloDescolagens;
+	int duracaoAterragem;
+	int intervaloAterragens;
+	int minHolding;
+	int maxHolding;
+	int maxPartidas;
+	int maxChegadas;
+
+
+
+void *flightPlanner(){
+	int tempo=0, tempo_sec=0, tempo_nsec=0;
+	int selection = 0;
+	struct timespec timetoWait = {0};
+	struct timespec check = {0};
+	int result;
+
+	while(isActive){
+
+		pthread_mutex_lock(&decisionMutex);
+
+		if (arrivalQueue->nextNodePtr == NULL && departureQueue == NULL)
+			pthread_cond_wait(&condGeral,&decisionMutex);
+
+		if(arrivalQueue->nextNodePtr->tempoDesejado < departureQueue->nextNodePtr->tempoDesejado){
+			if (arrivalQueue->nextNodePtr->nextNodePtr == NULL && departureQueue->nextNodePtr->nextNodePtr != NULL){
+				tempo = departureQueue->nextNodePtr->tempoDesejado * valuesPtr->unidadeTempo;
+				selection = 4;
+			}
+			else{
+				tempo = arrivalQueue->nextNodePtr->tempoDesejado * valuesPtr->unidadeTempo;
+				if (arrivalQueue->nextNodePtr->nextNodePtr != NULL){
+					selection = 2;
+				}
+				else selection =1;
+			
+		}
+
+		else if(departureQueue->nextNodePtr->tempoDesejado < arrivalQueue->nextNodePtr->tempoDesejado ){
+			if (departureQueue->nextNodePtr->nextNodePtr == NULL && arrivalQueue->nextNodePtr->nextNodePtr != NULL){
+				tempo = arrivalQueue->nextNodePtr->tempoDesejado * valuesPtr->unidadeTempo;
+				selection = 2;
+			}
+			else{
+				tempo = departureQueue->nextNodePtr->tempoDesejado * valuesPtr->unidadeTempo;
+				if (departureQueue->nextNodePtr->nextNodePtr != NULL){
+					selection = 4;
+				}
+				else selection = 2;
+			}
+		}
+
+
+		tempo_sec = tempo/1000;
+        tempo_nsec = (tempo%1000)*1000000;
+
+
+        timetoWait.tv_sec = sharedMemPtr->Time.tv_sec + tempo_sec + (tempo_nsec + sharedMemPtr->Time.tv_nsec)/1000000000;
+        timetoWait.tv_nsec = (tempo_nsec + sharedMemPtr->Time.tv_nsec)%1000000000;
+
+		result = pthread_cond_timedwait(&newFlight,&decisionMutex,&tempo);
+	    if (result !=0  && result != ETIMEDOUT) {
+	        fprintf(stderr, "%s\n", strerror(result));
+	        exit(EXIT_FAILURE);
+	    }
+
+	    result = clock_gettime(CLOCK_REALTIME, &check);
+		    if (result == -1) {
+	        perror("clock_gettime");
+	        exit(EXIT_FAILURE);
+	    }
+	    if (tempo>=check){
+	    	/* TO DO */
+	    }
+		pthread_mutex_unlock(&decisionMutex);
+
+	}
+}
+
+
 
 void *fuelUpdater(){
 
@@ -253,7 +353,9 @@ void *fuelUpdater(){
 
 		while(arrivalAux->nextNodePtr !=NULL){
 
+			pthread_mutex_lock(&fuelMutex);
 			if(arrivalAux >0) arrivalAux->nextNodePtr->fuel--;
+			pthread_mutex_unlock(&fuelMutex);
 			arrivalAux =arrivalAux->nextNodePtr;
 		}
 
@@ -268,8 +370,10 @@ void *fuelUpdater(){
 void newDeparture(messageQueuePtr mensagem){
 
 	replyQueuePtr reply = criaReplyStruct();
-
+	if (departureQueue->nextNodePtr == NULL)
+		pthread_cond_signal(&condGeral);
 	insereQueue(departureQueue,mensagem->tempoDesejado,mensagem->fuel);
+	pthread_cond_signal(&condDeparture);
 
 	printf("NEW DEPARTURE -- td: %d\n", mensagem->tempoDesejado);
 
@@ -287,9 +391,10 @@ void newDeparture(messageQueuePtr mensagem){
 void newArrival(messageQueuePtr mensagem){
 
 	replyQueuePtr reply = criaReplyStruct();
-
+	if (arrivalQueue->nextNodePtr == NULL)
+		pthread_cond_signal(&condGeral);
 	insereQueue(arrivalQueue,mensagem->tempoDesejado,mensagem->fuel);
-
+	pthread_cond_signal(&condArrival);
 	reply->messageType = 3;
 	reply->id = 0;
 	
@@ -733,6 +838,9 @@ void terminate(){
 	for(int i=0;i<sizeDepartures;i++){
 		pthread_join(departureThreads[i],NULL);
 	}
+
+	pthread_join(fuelThread,NULL);
+
 
 	freeArrivals(arrivalHead);
 	freeDepartures(departureHead);
