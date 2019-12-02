@@ -215,7 +215,7 @@ queuePtr criaQueue(){
     return aux;
 }
 
-void insereQueue(queuePtr queueHead, int tempoDesejado, int fuel, int prio){
+void insereQueue(queuePtr queueHead, int tempoDesejado, int fuel, int prio, int slot){
 
     queuePtr novo = criaQueue();
     queuePtr aux = queueHead;
@@ -235,6 +235,8 @@ void insereQueue(queuePtr queueHead, int tempoDesejado, int fuel, int prio){
 
     novo->tempoDesejado = tempoDesejado;
     novo->prio = prio;
+    novo->slot = slot;
+    
     if (fuel != -1) 
         novo->fuel = fuel;
 }

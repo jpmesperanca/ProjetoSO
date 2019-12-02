@@ -63,11 +63,12 @@ typedef struct estatisticasStruct{
 	int totalArrivals;
 	int totalDepartures;
 	int numeroVoosRedirecionados;
-	int numeroDesvios;
+	int numeroRejeitados;
 	float tempoMedioEsperaA;
 	float tempoMedioEsperaD;
 	float mediaManobrasHolding;
 	float mediaManobrasHoldingPrio;
+
 } statsStruct;
 
 
@@ -118,8 +119,8 @@ void timeComparator();
 void initializeSlots();
 void *ArrivalFlight(void* );
 void *DepartureFlight(void* );
-void newDeparture(messageQueuePtr mensagem);
-void newArrival(messageQueuePtr mensagem);
+int newDeparture(messageQueuePtr mensagem, int departuresHelper);
+int newArrival(messageQueuePtr mensagem, int arrivalsHelper);
 messageQueuePtr criaMQStruct();
 replyQueuePtr criaReplyStruct();
 void criaMessageQueue();
@@ -201,7 +202,9 @@ int main() {
 
 void controlTower() {
 
-	int isUpdaterCreated=0;
+	int isUpdaterCreated = 0;
+	int arrivalsHelper = 0; 
+	int departuresHelper = 0;
 
 	arrivalQueue = criaQueue();
 	departureQueue = criaQueue();
@@ -212,18 +215,20 @@ void controlTower() {
 		
 		msgrcv(messageQueueID, mensagem, sizeof(messageStruct), -2, 0);
 
-		if (mensagem->fuel == -1 && sharedMemPtr->totalArrivals < valuesPtr->maxChegadas)
-			newDeparture(mensagem);
+		if (mensagem->fuel == -1 && sharedMemPtr->totalDepartures < valuesPtr->maxChegadas)
+			departuresHelper = newDeparture(mensagem, departuresHelper);
 		
 	
-		else if (sharedMemPtr->totalDepartures < valuesPtr->maxPartidas){
-			newArrival(mensagem);
+		else if (sharedMemPtr->totalArrivals < valuesPtr->maxPartidas){
+			arrivalsHelper = newArrival(mensagem, arrivalsHelper);
 
 			if (isUpdaterCreated == 0){
 				pthread_create(&fuelThread,NULL,fuelUpdater,NULL);
 				isUpdaterCreated = 1;
 			}
 		}
+
+		else sharedMemPtr->estatisticas.numeroRejeitados++;
 	}
 }
 
@@ -263,43 +268,67 @@ void *fuelUpdater(){
 }
 
 
-void newDeparture(messageQueuePtr mensagem){
+int newDeparture(messageQueuePtr mensagem, int departuresHelper){
+
+	int aux = 1;
 
 	replyQueuePtr reply = criaReplyStruct();
 
-	insereQueue(departureQueue,mensagem->tempoDesejado,mensagem->fuel,0);
+	insereQueue(departureQueue,mensagem->tempoDesejado,mensagem->fuel,0,departuresHelper);
 
 	printf("NEW DEPARTURE -- td: %d\n", mensagem->tempoDesejado);
 
 	reply->messageType = 3;
-	reply->id = 0;
+	reply->id = departuresHelper;
 
-	strcpy(departures[0].ordem, "HOLDING420");
+	strcpy(departures[departuresHelper++].ordem, "HOLDING420");
 	msgsnd(messageQueueID, reply, sizeof(replyStruct), 0);
 
 	sharedMemPtr->totalDepartures++;
 	sharedMemPtr->estatisticas.totalVoos++;
+
+	while(aux){
+		if (departuresHelper == valuesPtr->maxPartidas) departuresHelper = 0;
+			
+		if (arrivals[departuresHelper].inUse == 1) departuresHelper++;
+			
+		else aux = 0;	
+	}
+
+	return departuresHelper;
 }
 
 
-void newArrival(messageQueuePtr mensagem){
+int newArrival(messageQueuePtr mensagem, int arrivalsHelper){
+
+	int aux = 1;
 
 	replyQueuePtr reply = criaReplyStruct();
 
 	if (4 + mensagem->tempoDesejado + valuesPtr->duracaoAterragem >= mensagem->fuel)
-		insereQueue(arrivalQueue,mensagem->tempoDesejado,mensagem->fuel,1);
+		insereQueue(arrivalQueue,mensagem->tempoDesejado,mensagem->fuel,1,arrivalsHelper);
 	
-	else insereQueue(arrivalQueue,mensagem->tempoDesejado,mensagem->fuel,0);
+	else insereQueue(arrivalQueue,mensagem->tempoDesejado,mensagem->fuel,0,arrivalsHelper);
 
 	reply->messageType = 3;
-	reply->id = 0;
+	reply->id = arrivalsHelper;
 	
-	strcpy(arrivals[0].ordem,"HOLDING420");
+	strcpy(arrivals[arrivalsHelper++].ordem,"HOLDING420");
 
 	msgsnd(messageQueueID, reply, sizeof(replyStruct), 0);
 
 	sharedMemPtr->totalArrivals++;
 	sharedMemPtr->estatisticas.totalVoos++;
+
+	while(aux){
+		if (arrivalsHelper == valuesPtr->maxChegadas) arrivalsHelper = 0;
+			
+		if (arrivals[arrivalsHelper].inUse == 1) arrivalsHelper++;
+			
+		else aux = 0;
+	}
+
+	return arrivalsHelper;
 }
 
 
@@ -562,7 +591,7 @@ void inicializaStats(){
 	sharedMemPtr->estatisticas.totalArrivals = 0;
 	sharedMemPtr->estatisticas.totalDepartures = 0;
 	sharedMemPtr->estatisticas.numeroVoosRedirecionados = 0;
-	sharedMemPtr->estatisticas.numeroDesvios = 0;
+	sharedMemPtr->estatisticas.numeroRejeitados = 0;
 	sharedMemPtr->estatisticas.tempoMedioEsperaA = 0;
 	sharedMemPtr->estatisticas.tempoMedioEsperaD = 0;
 	sharedMemPtr->estatisticas.mediaManobrasHolding = 0;
@@ -696,8 +725,7 @@ void *ArrivalFlight(void *flight){
 
 
 void *DepartureFlight(void *flight){
-	
-	
+
 	messageQueuePtr enviar = criaMQStruct();
 	replyQueuePtr reply = criaReplyStruct();
 

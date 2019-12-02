@@ -19,6 +19,7 @@ typedef struct arrivalNode{
 typedef struct queueNode* queuePtr;
 typedef struct queueNode{
 
+	int slot;
 	int fuel;
 	int tempoDesejado;
 	int prio;
@@ -64,7 +65,7 @@ departurePtr criaDepartures();
 //DepartureQueue
 
 queuePtr criaQueue();
-void insereQueue(queuePtr queueHead, int tempoDesejado, int fuel, int helper);
+void insereQueue(queuePtr queueHead, int tempoDesejado, int fuel, int helper, int slot);
 void freeQueue(queuePtr queueHead);
 void removeQueue(queuePtr queueHead);
 void printArrivalQueue(queuePtr queueHead);
