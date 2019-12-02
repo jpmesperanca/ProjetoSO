@@ -63,11 +63,12 @@ typedef struct estatisticasStruct{
 	int totalArrivals;
 	int totalDepartures;
 	int numeroVoosRedirecionados;
-	int numeroDesvios;
+	int numeroRejeitados;
 	float tempoMedioEsperaA;
 	float tempoMedioEsperaD;
 	float mediaManobrasHolding;
 	float mediaManobrasHoldingPrio;
+
 } statsStruct;
 
 
@@ -118,8 +119,8 @@ void timeComparator();
 void initializeSlots();
 void *ArrivalFlight(void* );
 void *DepartureFlight(void* );
-void newDeparture(messageQueuePtr mensagem);
-void newArrival(messageQueuePtr mensagem);
+int newDeparture(messageQueuePtr mensagem, int departuresHelper);
+int newArrival(messageQueuePtr mensagem, int arrivalsHelper);
 messageQueuePtr criaMQStruct();
 replyQueuePtr criaReplyStruct();
 void criaMessageQueue();
@@ -211,7 +212,12 @@ int main() {
 void controlTower() {
 
 	int isUpdaterCreated = 0;
+<<<<<<< HEAD
 	int isDecisionCreated = 0;
+=======
+	int arrivalsHelper = 0; 
+	int departuresHelper = 0;
+>>>>>>> de17e9a296ae9b822b1306a09fd3dd30c471d6a9
 
 	arrivalQueue = criaQueue();
 	departureQueue = criaQueue();
@@ -219,30 +225,37 @@ void controlTower() {
 	messageQueuePtr mensagem = criaMQStruct();
 
 	while(isActive == 1){
-
+		
 		msgrcv(messageQueueID, mensagem, sizeof(messageStruct), -2, 0);
 
+<<<<<<< HEAD
 		if (mensagem->fuel == -1 && sharedMemPtr->totalArrivals < valuesPtr->maxChegadas){
 			newDeparture(mensagem);
 		}
+=======
+		if (mensagem->fuel == -1 && sharedMemPtr->totalDepartures < valuesPtr->maxChegadas)
+			departuresHelper = newDeparture(mensagem, departuresHelper);
+>>>>>>> de17e9a296ae9b822b1306a09fd3dd30c471d6a9
 		
 	
-		else if (sharedMemPtr->totalDepartures < valuesPtr->maxPartidas){
-			newArrival(mensagem);
+		else if (sharedMemPtr->totalArrivals < valuesPtr->maxPartidas){
+			arrivalsHelper = newArrival(mensagem, arrivalsHelper);
 
-			printf("FUEL START: %d\n",mensagem->fuel);
-			sharedMemPtr->totalArrivals++;
 			if (isUpdaterCreated == 0){
 				pthread_create(&fuelThread,NULL,fuelUpdater,NULL);
 				isUpdaterCreated = 1;
 			}
 		}
 
+<<<<<<< HEAD
 		if (isDecisionCreated = 0){
 			pthread_create(&decisionThread,NULL,flightPlanner,NULL);
 			isDecisionCreated = 1;
 		}
 
+=======
+		else sharedMemPtr->estatisticas.numeroRejeitados++;
+>>>>>>> de17e9a296ae9b822b1306a09fd3dd30c471d6a9
 	}
 }
 
@@ -343,9 +356,9 @@ void *fuelUpdater(){
     tempo.tv_nsec = (tempo.tv_nsec + valuesPtr->unidadeTempo*1000000) % 1000000000;
     tempo.tv_sec = tempo.tv_sec +(tempo.tv_nsec + valuesPtr->unidadeTempo*1000000) / 1000000000;
 
-	while(isActive){
+	while(isActive == 1){
 
-		result=clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME,&tempo,NULL);
+		result = clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME,&tempo,NULL);
 		if (result !=0 && result !=EINVAL){
 			fprintf(stderr, "%s\n", strerror(result));
 			exit(EXIT_FAILURE);
@@ -367,43 +380,81 @@ void *fuelUpdater(){
 }
 
 
-void newDeparture(messageQueuePtr mensagem){
+int newDeparture(messageQueuePtr mensagem, int departuresHelper){
+
+	int aux = 1;
 
 	replyQueuePtr reply = criaReplyStruct();
+<<<<<<< HEAD
 	if (departureQueue->nextNodePtr == NULL)
 		pthread_cond_signal(&condGeral);
 	insereQueue(departureQueue,mensagem->tempoDesejado,mensagem->fuel);
 	pthread_cond_signal(&condDeparture);
+=======
+
+	insereQueue(departureQueue,mensagem->tempoDesejado,mensagem->fuel,0,departuresHelper);
+>>>>>>> de17e9a296ae9b822b1306a09fd3dd30c471d6a9
 
 	printf("NEW DEPARTURE -- td: %d\n", mensagem->tempoDesejado);
 
-	reply->messageType = 1;
-	reply->id = 0;
+	reply->messageType = 3;
+	reply->id = departuresHelper;
 
-	strcpy(departures[0].ordem, "HOLDING420");
+	strcpy(departures[departuresHelper++].ordem, "HOLDING420");
 	msgsnd(messageQueueID, reply, sizeof(replyStruct), 0);
 
 	sharedMemPtr->totalDepartures++;
 	sharedMemPtr->estatisticas.totalVoos++;
+
+	while(aux){
+		if (departuresHelper == valuesPtr->maxPartidas) departuresHelper = 0;
+			
+		if (arrivals[departuresHelper].inUse == 1) departuresHelper++;
+			
+		else aux = 0;	
+	}
+
+	return departuresHelper;
 }
 
 
-void newArrival(messageQueuePtr mensagem){
+int newArrival(messageQueuePtr mensagem, int arrivalsHelper){
+
+	int aux = 1;
 
 	replyQueuePtr reply = criaReplyStruct();
+<<<<<<< HEAD
 	if (arrivalQueue->nextNodePtr == NULL)
 		pthread_cond_signal(&condGeral);
 	insereQueue(arrivalQueue,mensagem->tempoDesejado,mensagem->fuel);
 	pthread_cond_signal(&condArrival);
-	reply->messageType = 3;
-	reply->id = 0;
+=======
+
+	if (4 + mensagem->tempoDesejado + valuesPtr->duracaoAterragem >= mensagem->fuel)
+		insereQueue(arrivalQueue,mensagem->tempoDesejado,mensagem->fuel,1,arrivalsHelper);
 	
-	strcpy(arrivals[0].ordem,"HOLDING420");
+	else insereQueue(arrivalQueue,mensagem->tempoDesejado,mensagem->fuel,0,arrivalsHelper);
+
+>>>>>>> de17e9a296ae9b822b1306a09fd3dd30c471d6a9
+	reply->messageType = 3;
+	reply->id = arrivalsHelper;
+	
+	strcpy(arrivals[arrivalsHelper++].ordem,"HOLDING420");
 
 	msgsnd(messageQueueID, reply, sizeof(replyStruct), 0);
 
 	sharedMemPtr->totalArrivals++;
 	sharedMemPtr->estatisticas.totalVoos++;
+
+	while(aux){
+		if (arrivalsHelper == valuesPtr->maxChegadas) arrivalsHelper = 0;
+			
+		if (arrivals[arrivalsHelper].inUse == 1) arrivalsHelper++;
+			
+		else aux = 0;
+	}
+
+	return arrivalsHelper;
 }
 
 
@@ -666,7 +717,7 @@ void inicializaStats(){
 	sharedMemPtr->estatisticas.totalArrivals = 0;
 	sharedMemPtr->estatisticas.totalDepartures = 0;
 	sharedMemPtr->estatisticas.numeroVoosRedirecionados = 0;
-	sharedMemPtr->estatisticas.numeroDesvios = 0;
+	sharedMemPtr->estatisticas.numeroRejeitados = 0;
 	sharedMemPtr->estatisticas.tempoMedioEsperaA = 0;
 	sharedMemPtr->estatisticas.tempoMedioEsperaD = 0;
 	sharedMemPtr->estatisticas.mediaManobrasHolding = 0;
@@ -777,9 +828,14 @@ void *ArrivalFlight(void *flight){
 
 	insertLogfile("ARRIVAL STARTED =>",((arrivalPtr)flight)->nome);
 
-	enviar->messageType = 2;
 	enviar->fuel = ((arrivalPtr)flight)->fuel;
 	enviar->tempoDesejado = ((arrivalPtr)flight)->init + ((arrivalPtr)flight)->eta;
+	
+	if (4 + enviar->tempoDesejado + valuesPtr->duracaoAterragem >= enviar->fuel)
+		enviar->messageType = 2;
+	
+	else
+		enviar->messageType = 1;
 
 	msgsnd(messageQueueID, enviar, sizeof(messageStruct), 0);
 	msgrcv(messageQueueID, reply, sizeof(replyStruct), 3, 0);
@@ -795,8 +851,7 @@ void *ArrivalFlight(void *flight){
 
 
 void *DepartureFlight(void *flight){
-	
-	
+
 	messageQueuePtr enviar = criaMQStruct();
 	replyQueuePtr reply = criaReplyStruct();
 
