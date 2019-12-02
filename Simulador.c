@@ -168,7 +168,6 @@ valuesStructPtr valuesPtr;
 shmSlotsPtr arrivals;
 shmSlotsPtr departures;
 
-
 queuePtr arrivalQueue;
 queuePtr departureQueue;
 
@@ -204,15 +203,16 @@ void controlTower() {
 
 	int isUpdaterCreated=0;
 
-	queuePtr arrivalQueue = criaQueue();
-	queuePtr departureQueue = criaQueue();
+	arrivalQueue = criaQueue();
+
+	departureQueue = criaQueue();
 
 	messageQueuePtr mensagem = criaMQStruct();
 
 	while(isActive == 1){
 
 		msgrcv(messageQueueID, mensagem, sizeof(messageStruct), -2, 0);
-		printf("recebi mensagem na ct \n");
+	
 		if (mensagem->fuel == -1){
 			newDeparture(mensagem);
 			sharedMemPtr->totalDepartures++;
@@ -275,6 +275,7 @@ void newDeparture(messageQueuePtr mensagem){
 
 	reply->messageType = 1;
 	reply->id = 0;
+
 	strcpy(departures[0].ordem, "HOLDING420");
 	msgsnd(messageQueueID, reply, sizeof(replyStruct), 0);
 }
@@ -284,16 +285,12 @@ void newArrival(messageQueuePtr mensagem){
 
 	replyQueuePtr reply = criaReplyStruct();
 
-	printf("NEW ARRIVAL -- fuel: %d, td: %d\n", mensagem->fuel, mensagem->tempoDesejado);
-
 	insereQueue(arrivalQueue,mensagem->tempoDesejado,mensagem->fuel);
 
 	reply->messageType = 3;
 	reply->id = 0;
 	
-
 	strcpy(arrivals[0].ordem,"HOLDING420");
-	printf("%s\n", arrivals[0].ordem);
 
 	msgsnd(messageQueueID, reply, sizeof(replyStruct), 0);
 }
@@ -676,8 +673,7 @@ void *ArrivalFlight(void *flight){
 	msgsnd(messageQueueID, enviar, sizeof(messageStruct), 0);
 	msgrcv(messageQueueID, reply, sizeof(replyStruct), 3, 0);
 
-	printf("O meu slot favorito é o %d!!\n", reply->id);
-	printf("Tenho a ordem: %s\n", arrivals[reply->id].ordem);
+	printf("%02d:%02d:%02d VOO SLOT[%d] => Tenho a ordem: %s\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, reply->id, arrivals[reply->id].ordem);
 
 	usleep((valuesPtr->duracaoAterragem) * (valuesPtr->unidadeTempo) * 1000);
 	insertLogfile("ARRIVAL CONCLUDED =>",((arrivalPtr)flight)->nome);
