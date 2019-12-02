@@ -244,6 +244,16 @@ void freeQueue(queuePtr queueHead){
         }
 }
 
+
+void removeQueue(queuePtr queueHead){
+
+    queuePtr aux = queueHead->nextNodePtr->nextNodePtr;
+
+   free(queueHead);
+
+    queueHead->nextNodePtr = aux;
+}
+
 void printDepartureQueue(queuePtr queueHead){
 
     queuePtr aux = queueHead->nextNodePtr;

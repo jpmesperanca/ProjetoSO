@@ -65,6 +65,7 @@ departurePtr criaDepartures();
 queuePtr criaQueue();
 void insereQueue(queuePtr queueHead, int tempoDesejado, int fuel);
 void freeQueue(queuePtr queueHead);
+void removeQueue(queuePtr queueHead);
 void printQueue(queuePtr queueHead);
 void printQueue(queuePtr queueHead);
 
