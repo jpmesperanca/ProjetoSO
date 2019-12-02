@@ -212,12 +212,9 @@ int main() {
 void controlTower() {
 
 	int isUpdaterCreated = 0;
-<<<<<<< HEAD
-	int isDecisionCreated = 0;
-=======
+	int isDecisionCreated = 1;
 	int arrivalsHelper = 0; 
 	int departuresHelper = 0;
->>>>>>> de17e9a296ae9b822b1306a09fd3dd30c471d6a9
 
 	arrivalQueue = criaQueue();
 	departureQueue = criaQueue();
@@ -228,14 +225,8 @@ void controlTower() {
 		
 		msgrcv(messageQueueID, mensagem, sizeof(messageStruct), -2, 0);
 
-<<<<<<< HEAD
-		if (mensagem->fuel == -1 && sharedMemPtr->totalArrivals < valuesPtr->maxChegadas){
-			newDeparture(mensagem);
-		}
-=======
 		if (mensagem->fuel == -1 && sharedMemPtr->totalDepartures < valuesPtr->maxChegadas)
 			departuresHelper = newDeparture(mensagem, departuresHelper);
->>>>>>> de17e9a296ae9b822b1306a09fd3dd30c471d6a9
 		
 	
 		else if (sharedMemPtr->totalArrivals < valuesPtr->maxPartidas){
@@ -246,16 +237,12 @@ void controlTower() {
 				isUpdaterCreated = 1;
 			}
 		}
+		else sharedMemPtr->estatisticas.numeroRejeitados++;
 
-<<<<<<< HEAD
 		if (isDecisionCreated = 0){
 			pthread_create(&decisionThread,NULL,flightPlanner,NULL);
 			isDecisionCreated = 1;
 		}
-
-=======
-		else sharedMemPtr->estatisticas.numeroRejeitados++;
->>>>>>> de17e9a296ae9b822b1306a09fd3dd30c471d6a9
 	}
 }
 
@@ -296,7 +283,7 @@ void *flightPlanner(){
 					selection = 2;
 				}
 				else selection =1;
-			
+			}
 		}
 
 		else if(departureQueue->nextNodePtr->tempoDesejado < arrivalQueue->nextNodePtr->tempoDesejado ){
@@ -313,7 +300,6 @@ void *flightPlanner(){
 			}
 		}
 
-
 		tempo_sec = tempo/1000;
         tempo_nsec = (tempo%1000)*1000000;
 
@@ -321,7 +307,7 @@ void *flightPlanner(){
         timetoWait.tv_sec = sharedMemPtr->Time.tv_sec + tempo_sec + (tempo_nsec + sharedMemPtr->Time.tv_nsec)/1000000000;
         timetoWait.tv_nsec = (tempo_nsec + sharedMemPtr->Time.tv_nsec)%1000000000;
 
-		result = pthread_cond_timedwait(&newFlight,&decisionMutex,&tempo);
+		result = pthread_cond_timedwait(&condGeral,&decisionMutex,&timetoWait);
 	    if (result !=0  && result != ETIMEDOUT) {
 	        fprintf(stderr, "%s\n", strerror(result));
 	        exit(EXIT_FAILURE);
@@ -332,9 +318,7 @@ void *flightPlanner(){
 	        perror("clock_gettime");
 	        exit(EXIT_FAILURE);
 	    }
-	    if (tempo>=check){
-	    	/* TO DO */
-	    }
+
 		pthread_mutex_unlock(&decisionMutex);
 
 	}
@@ -385,15 +369,9 @@ int newDeparture(messageQueuePtr mensagem, int departuresHelper){
 	int aux = 1;
 
 	replyQueuePtr reply = criaReplyStruct();
-<<<<<<< HEAD
-	if (departureQueue->nextNodePtr == NULL)
-		pthread_cond_signal(&condGeral);
-	insereQueue(departureQueue,mensagem->tempoDesejado,mensagem->fuel);
-	pthread_cond_signal(&condDeparture);
-=======
 
-	insereQueue(departureQueue,mensagem->tempoDesejado,mensagem->fuel,0,departuresHelper);
->>>>>>> de17e9a296ae9b822b1306a09fd3dd30c471d6a9
+	insereQueue(departureQueue,mensagem->tempoDesejado,mensagem->fuel,1,departuresHelper);
+	pthread_cond_signal(&condGeral);
 
 	printf("NEW DEPARTURE -- td: %d\n", mensagem->tempoDesejado);
 
@@ -423,19 +401,12 @@ int newArrival(messageQueuePtr mensagem, int arrivalsHelper){
 	int aux = 1;
 
 	replyQueuePtr reply = criaReplyStruct();
-<<<<<<< HEAD
-	if (arrivalQueue->nextNodePtr == NULL)
-		pthread_cond_signal(&condGeral);
-	insereQueue(arrivalQueue,mensagem->tempoDesejado,mensagem->fuel);
-	pthread_cond_signal(&condArrival);
-=======
 
 	if (4 + mensagem->tempoDesejado + valuesPtr->duracaoAterragem >= mensagem->fuel)
 		insereQueue(arrivalQueue,mensagem->tempoDesejado,mensagem->fuel,1,arrivalsHelper);
 	
 	else insereQueue(arrivalQueue,mensagem->tempoDesejado,mensagem->fuel,0,arrivalsHelper);
-
->>>>>>> de17e9a296ae9b822b1306a09fd3dd30c471d6a9
+	pthread_cond_signal(&condGeral);
 	reply->messageType = 3;
 	reply->id = arrivalsHelper;
 	
