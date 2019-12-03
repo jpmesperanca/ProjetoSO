@@ -271,7 +271,11 @@ void *flightPlanner(){
 
 		if (arrivalQueue->nextNodePtr == NULL && departureQueue == NULL)
 			pthread_cond_wait(&condGeral,&decisionMutex);
-
+		
+		//OPCAO 1- ARRIVALS TD < DEPARTURE TD  -- ARRIVALS COM APENAS 1 FLIGHT
+		//OPCAO 2- ARRIVALS TD < DEPARTURE TD  OU ARRIVALS MAIOR MAS 2 VOOS EM ESPERA E DEPARTURE APENAS 1 -- ARRIVALS COM 2 FLIGHTS
+		// OPCAO 3 - DEPARTURE TD <ARRIVALS -- DEPARTURE 1 FLIGHT
+		//OPCAO 4 DEPARTURE TD < ARRIVALS TD OU DEPARTURE MAIOR MAS 2 VOOS EM ESPERA E ARRIVALS SO 1 -- DEPARTURE 2 FLIGHTS
 		if(arrivalQueue->nextNodePtr->tempoDesejado < departureQueue->nextNodePtr->tempoDesejado){
 			if (arrivalQueue->nextNodePtr->nextNodePtr == NULL && departureQueue->nextNodePtr->nextNodePtr != NULL){
 				tempo = departureQueue->nextNodePtr->tempoDesejado * valuesPtr->unidadeTempo;
