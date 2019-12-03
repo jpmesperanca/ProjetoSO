@@ -796,6 +796,7 @@ void *ArrivalFlight(void *flight){
 
 	messageQueuePtr enviar = criaMQStruct();
 	replyQueuePtr reply = criaReplyStruct();
+	int isWorking = 1;
 
 	insertLogfile("ARRIVAL STARTED =>",((arrivalPtr)flight)->nome);
 
@@ -809,10 +810,13 @@ void *ArrivalFlight(void *flight){
 		enviar->messageType = 1;
 
 	msgsnd(messageQueueID, enviar, sizeof(messageStruct), 0);
-	msgrcv(messageQueueID, reply, sizeof(replyStruct), 3, 0);
 
-	printf("%02d:%02d:%02d VOO SLOT[%d] => Tenho a ordem: %s\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, reply->id, arrivals[reply->id].ordem);
+	while (isWorking){	
+		msgrcv(messageQueueID, reply, sizeof(replyStruct), 3, 0);
+		printf("%02d:%02d:%02d VOO SLOT[%d] => Tenho a ordem: %s\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, reply->id, arrivals[reply->id].ordem);
 
+		if (strcmp(arrivals[reply->id].ordem,"ATERRAR")==0) isWorking = 0;
+	}
 	usleep((valuesPtr->duracaoAterragem) * (valuesPtr->unidadeTempo) * 1000);
 	insertLogfile("ARRIVAL CONCLUDED =>",((arrivalPtr)flight)->nome);
 
@@ -825,6 +829,7 @@ void *DepartureFlight(void *flight){
 
 	messageQueuePtr enviar = criaMQStruct();
 	replyQueuePtr reply = criaReplyStruct();
+	int isWorking = 1;
 
 	insertLogfile("DEPARTURE STARTED =>",((departurePtr)flight)->nome);
 
@@ -832,10 +837,12 @@ void *DepartureFlight(void *flight){
 	enviar->tempoDesejado = ((departurePtr)flight)->init + ((departurePtr)flight)->takeoff;
 
 	msgsnd(messageQueueID, enviar, sizeof(messageStruct), 0);
-	msgrcv(messageQueueID, reply, sizeof(replyStruct), 3, 0);
+	while (isWorking){	
+		msgrcv(messageQueueID, reply, sizeof(replyStruct), 3, 0);
+		printf("%02d:%02d:%02d VOO SLOT[%d] => Tenho a ordem: %s\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, reply->id, arrivals[reply->id].ordem);
 
-	printf("O meu slot favorito é o %d!!\n", reply->id);
-
+		if (strcmp(arrivals[reply->id].ordem,"ATERRAR")==0) isWorking = 0;
+	}
 	usleep((valuesPtr->duracaoDescolagem) * (valuesPtr->unidadeTempo) * 1000);
 	insertLogfile("DEPARTURE CONCLUDED =>",((departurePtr)flight)->nome);
 	
