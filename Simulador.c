@@ -224,7 +224,6 @@ void controlTower() {
 	while(isActive == 1){
 		
 		msgrcv(messageQueueID, mensagem, sizeof(messageStruct), -2, 0);
-		printf("FODASSE\n");
 
 		if (mensagem->fuel == -1 && sharedMemPtr->totalDepartures < valuesPtr->maxChegadas){
 			departuresHelper = newDeparture(mensagem, departuresHelper);
@@ -254,6 +253,7 @@ void controlTower() {
 	}
 }
 
+/*
 	int unidadeTempo;
 	int duracaoDescolagem;
 	int intervaloDescolagens;
@@ -263,7 +263,8 @@ void controlTower() {
 	int maxHolding;
 	int maxPartidas;
 	int maxChegadas;
-
+	arrivals[reply->id].ordem;
+*/
 
 
 void *flightPlanner(){
@@ -285,8 +286,16 @@ void *flightPlanner(){
 		//OPCAO 2- ARRIVALS TD < DEPARTURE TD  OU ARRIVALS MAIOR MAS 2 VOOS EM ESPERA E DEPARTURE APENAS 1 -- ARRIVALS COM 2 FLIGHTS
 		// OPCAO 3 - DEPARTURE TD <ARRIVALS -- DEPARTURE 1 FLIGHT
 		//OPCAO 4 DEPARTURE TD < ARRIVALS TD OU DEPARTURE MAIOR MAS 2 VOOS EM ESPERA E ARRIVALS SO 1 -- DEPARTURE 2 FLIGHTS
-		printf("Escolha feita\n");
-		if(arrivalQueue->nextNodePtr->tempoDesejado <= departureQueue->nextNodePtr->tempoDesejado){
+		if (departureQueue->nextNodePtr ==  NULL){
+			tempo = arrivalQueue->nextNodePtr->tempoDesejado * valuesPtr->unidadeTempo;
+			selection = 1;
+		}
+		else if (arrivalQueue->nextNodePtr == NULL){
+			tempo = departureQueue->nextNodePtr->tempoDesejado * valuesPtr->unidadeTempo;
+			selection = 3;
+		}
+
+		else if(arrivalQueue->nextNodePtr->tempoDesejado <= departureQueue->nextNodePtr->tempoDesejado){
 			if (arrivalQueue->nextNodePtr->nextNodePtr == NULL && departureQueue->nextNodePtr->nextNodePtr != NULL){
 				tempo = departureQueue->nextNodePtr->tempoDesejado * valuesPtr->unidadeTempo;
 				selection = 4;
@@ -313,19 +322,19 @@ void *flightPlanner(){
 				else selection = 2;
 			}
 		}
-
+		printf("HERE1!\n");
 		tempo_sec = tempo/1000;
         tempo_nsec = (tempo%1000)*1000000;
-        printf("Escolha feita\n");
-
+        printf("HERE2!\n");
         timetoWait.tv_sec = sharedMemPtr->Time.tv_sec + tempo_sec + (tempo_nsec + sharedMemPtr->Time.tv_nsec)/1000000000;
         timetoWait.tv_nsec = (tempo_nsec + sharedMemPtr->Time.tv_nsec)%1000000000;
 
 		result = pthread_cond_timedwait(&condGeral,&decisionMutex,&timetoWait);
-	    if (result !=0  && result != ETIMEDOUT) {
+	    if (result !=0  && result == ETIMEDOUT) {
 	        fprintf(stderr, "%s\n", strerror(result));
 	        exit(EXIT_FAILURE);
 	    }
+	    printf("Escolha feita");
 
 	    result = clock_gettime(CLOCK_REALTIME, &check);
 		    if (result == -1) {
@@ -333,7 +342,12 @@ void *flightPlanner(){
 	        exit(EXIT_FAILURE);
 	    }
 
-	    if (check.tv_sec != timetoWait.tv_sec && check.tv_nsec != timetoWait.tv_nsec) continue;
+	    printf("%s-%s\n",ctime(&timetoWait.tv_sec),ctime(&check.tv_sec));
+
+	    if (difftime(timetoWait.tv_sec,check.tv_sec) < 0){
+	    	printf("WELL FUCK\n");
+	    	continue;
+	    }
 
 		printf("STARTING ORDEM\n");
 	    if (selection == 1 || selection == 2){
@@ -848,7 +862,8 @@ void *ArrivalFlight(void *flight){
 
 	messageQueuePtr enviar = criaMQStruct();
 	replyQueuePtr reply = criaReplyStruct();
-	int isWorking = 1;
+	int isWorking = 1,result;
+	struct timespec check = {0};
 
 	insertLogfile("ARRIVAL STARTED =>",((arrivalPtr)flight)->nome);
 
@@ -867,7 +882,7 @@ void *ArrivalFlight(void *flight){
 	calculaHora();	
 	printf("%02d:%02d:%02d VOO SLOT[%d] => Tenho a ordem: %s\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, reply->id, arrivals[reply->id].ordem);
 	while (strcmp(arrivals[reply->id].ordem,"ATERRAR")!=0){
-		// BOA ESPERA ATIVA marcelino
+		
 	}
 	calculaHora();	
 	printf("%02d:%02d:%02d VOO SLOT[%d] => Tenho a ordem: %s\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, reply->id, arrivals[reply->id].ordem);
