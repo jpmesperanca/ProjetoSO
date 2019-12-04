@@ -70,5 +70,6 @@ void freeQueue(queuePtr queueHead);
 void removeQueue(queuePtr queueHead);
 void printArrivalQueue(queuePtr queueHead);
 void printDepartureQueue(queuePtr queueHead);
+int contaQueue(queuePtr queueHead, int utAtual);
 
 #endif

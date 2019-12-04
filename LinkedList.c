@@ -258,10 +258,12 @@ void removeQueue(queuePtr queueHead){
 
     queuePtr aux = queueHead->nextNodePtr->nextNodePtr;
 
-   free(queueHead);
+    free(queueHead);
 
     queueHead->nextNodePtr = aux;
+
 }
+
 
 void printDepartureQueue(queuePtr queueHead){
 
@@ -293,11 +295,12 @@ int contaQueue(queuePtr queueHead, int utAtual){
     queuePtr aux = queueHead->nextNodePtr;
 
     while (aux != NULL){
-
-        if (queueHead->tempoDesejado <= utAtual)
+        if (aux->tempoDesejado <= utAtual)
             count++;
         else
             return count;
+
+        aux= aux->nextNodePtr;
     }
     return count;
 }
