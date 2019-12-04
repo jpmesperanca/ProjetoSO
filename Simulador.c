@@ -413,15 +413,12 @@ void *flightPlanner(){
 
 		if (arrivalsReady >= departuresReady){
 
-			if (arrivalsReady == 1){
+			if (arrivalsReady >= 1){
 
-				strcpy(arrivals[arrivalQueue->nextNodePtr->slot].ordem,"ATERRAR");
-			}
-
-			else if (arrivalsReady > 1){
-
-				strcpy(arrivals[arrivalQueue->nextNodePtr->slot].ordem,"ATERRAR");
-				strcpy(arrivals[arrivalQueue->nextNodePtr->nextNodePtr_>slot].ordem,"ATERRAR");
+				for (i = 0; i < arrivalsReady && i < 2; i++){
+					strcpy(arrivals[arrivalQueue->nextNodePtr->slot].ordem,"ATERRAR");
+					//FAZER FUNCOES PARA REMOVER A CABECA
+				}
 			}
 
 			else
@@ -429,22 +426,19 @@ void *flightPlanner(){
 		}
 
 		else {
+			
+			if (departuresReady >= 1){
 
-			if (departuresReady == 1){
-
-				strcpy(arrivals[departureQueue->nextNodePtr->slot].ordem,"LEVANTAR");
-			}
-
-			else if (departuresReady > 1){
-
-				strcpy(arrivals[departureQueue->nextNodePtr->slot].ordem,"LEVANTAR");
-				strcpy(arrivals[departureQueue->nextNodePtr->nextNodePtr->slot].ordem,"LEVANTAR");
+				for (i = 0; i < departuresReady && i < 2; i++){
+					strcpy(departures[departureQueue->nextNodePtr->slot].ordem,"LEVANTAR");
+					//FAZER FUNCOES PARA REMOVER A CABECA
+				}
 			}
 
 			else
 				printf("Broken Departures\n");
 		}
-
+		
 		pthread_mutex_unlock(&decisionMutex);
 	}
 }
