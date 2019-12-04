@@ -227,9 +227,9 @@ void controlTower() {
 
 		if (mensagem->fuel == -1 && sharedMemPtr->totalDepartures < valuesPtr->maxChegadas){
 			departuresHelper = newDeparture(mensagem, departuresHelper);
+
 			if (isDecisionCreated == 0){
 				pthread_create(&decisionThread,NULL,flightPlanner,NULL);
-				printf("WTF\n");
 				isDecisionCreated = 1;
 			}
 		}
@@ -242,9 +242,9 @@ void controlTower() {
 				pthread_create(&fuelThread,NULL,fuelUpdater,NULL);
 				isUpdaterCreated = 1;
 			}
+
 			if (isDecisionCreated == 0){
 				pthread_create(&decisionThread,NULL,flightPlanner,NULL);
-				printf("WTF\n");
 				isDecisionCreated = 1;
 			}
 		}
@@ -264,7 +264,7 @@ void controlTower() {
 	int maxPartidas;
 	int maxChegadas;
 	arrivals[reply->id].ordem;
-*/
+
 
 
 void *flightPlanner(){
@@ -389,6 +389,65 @@ void *flightPlanner(){
 
 	}
 }
+*/
+
+
+void *flightPlanner(){
+
+	int utAtual, arrivalsReady, departuresReady, i;
+	struct timespec now;
+
+	while(isActive){
+
+		pthread_mutex_lock(&decisionMutex);
+
+	    if (clock_gettime(CLOCK_REALTIME, &now) == -1) {
+	        perror("clock_gettime");
+	        exit(EXIT_FAILURE);
+	    }
+
+		utAtual = ((1000* (now.tv_sec - sharedMemPtr->Time.tv_sec) + (now.tv_nsec - sharedMemPtr->Time.tv_nsec)/1000000) / valuesPtr->unidadeTempo);
+   		
+		departuresReady = contaQueue(departureQueue, utAtual);
+		arrivalsReady = contaQueue(arrivalQueue, utAtual);
+
+		if (arrivalsReady >= departuresReady){
+
+			if (arrivalsReady == 1){
+
+				strcpy(arrivals[arrivalQueue->nextNodePtr->slot].ordem,"ATERRAR");
+			}
+
+			else if (arrivalsReady > 1){
+
+				strcpy(arrivals[arrivalQueue->nextNodePtr->slot].ordem,"ATERRAR");
+				strcpy(arrivals[arrivalQueue->nextNodePtr->nextNodePtr_>slot].ordem,"ATERRAR");
+			}
+
+			else
+				printf("Broken Arrivals\n");
+		}
+
+		else {
+
+			if (departuresReady == 1){
+
+				strcpy(arrivals[departureQueue->nextNodePtr->slot].ordem,"LEVANTAR");
+			}
+
+			else if (departuresReady > 1){
+
+				strcpy(arrivals[departureQueue->nextNodePtr->slot].ordem,"LEVANTAR");
+				strcpy(arrivals[departureQueue->nextNodePtr->nextNodePtr->slot].ordem,"LEVANTAR");
+			}
+
+			else
+				printf("Broken Departures\n");
+		}
+
+		pthread_mutex_unlock(&decisionMutex);
+	}
+}
 
 
 
@@ -417,8 +476,12 @@ void *fuelUpdater(){
 		while(arrivalAux->nextNodePtr !=NULL){
 
 			pthread_mutex_lock(&fuelMutex);
-			if(arrivalAux >0) arrivalAux->nextNodePtr->fuel--;
+
+			if (arrivalAux >0)
+				arrivalAux->nextNodePtr->fuel--;
+
 			pthread_mutex_unlock(&fuelMutex);
+
 			arrivalAux =arrivalAux->nextNodePtr;
 		}
 
@@ -707,30 +770,30 @@ void *timerCount(){
             exit(EXIT_FAILURE);
            } 
 
-           if(arrivalHead->nextNodePtr == NULL && departureHead->nextNodePtr == NULL){
-             pthread_cond_wait(&condTime,&timeMutex);
-             aux=1;
-           }
+            if(arrivalHead->nextNodePtr == NULL && departureHead->nextNodePtr == NULL){
+	            pthread_cond_wait(&condTime,&timeMutex);
+	            aux=1;
+            }
 
-          	else if(departureHead->nextNodePtr == NULL && arrivalHead->nextNodePtr != NULL)
-             tempo = arrivalHead->nextNodePtr->init * valuesPtr->unidadeTempo;
+        else if(departureHead->nextNodePtr == NULL && arrivalHead->nextNodePtr != NULL)
+            tempo = arrivalHead->nextNodePtr->init * valuesPtr->unidadeTempo;
 
-         else if (arrivalHead->nextNodePtr == NULL && departureHead->nextNodePtr != NULL)
-             tempo = departureHead->nextNodePtr->init * valuesPtr->unidadeTempo;
+        else if (arrivalHead->nextNodePtr == NULL && departureHead->nextNodePtr != NULL)
+            tempo = departureHead->nextNodePtr->init * valuesPtr->unidadeTempo;
 
-         else if (arrivalHead->nextNodePtr->init <= departureHead->nextNodePtr->init)
-             tempo = arrivalHead->nextNodePtr->init * valuesPtr->unidadeTempo;
+        else if (arrivalHead->nextNodePtr->init <= departureHead->nextNodePtr->init)
+            tempo = arrivalHead->nextNodePtr->init * valuesPtr->unidadeTempo;
 
-         else if (arrivalHead->nextNodePtr->init > departureHead->nextNodePtr->init)
-             tempo = departureHead->nextNodePtr->init * valuesPtr->unidadeTempo;
-
-
-         tempo_sec = tempo/1000;
-         tempo_nsec = (tempo%1000)*1000000;
+        else if (arrivalHead->nextNodePtr->init > departureHead->nextNodePtr->init)
+            tempo = departureHead->nextNodePtr->init * valuesPtr->unidadeTempo;
 
 
-         timetoWait.tv_sec = sharedMemPtr->Time.tv_sec + tempo_sec + (tempo_nsec + sharedMemPtr->Time.tv_nsec)/1000000000;
-         timetoWait.tv_nsec = (tempo_nsec + sharedMemPtr->Time.tv_nsec)%1000000000;
+        tempo_sec = tempo/1000;
+        tempo_nsec = (tempo%1000)*1000000;
+
+
+        timetoWait.tv_sec = sharedMemPtr->Time.tv_sec + tempo_sec + (tempo_nsec + sharedMemPtr->Time.tv_nsec)/1000000000;
+        timetoWait.tv_nsec = (tempo_nsec + sharedMemPtr->Time.tv_nsec)%1000000000;
 
 
         if (aux ==0){

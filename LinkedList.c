@@ -286,3 +286,18 @@ void printArrivalQueue(queuePtr queueHead){
         } 
     printf("------\n");
 }
+
+int contaQueue(queuePtr queueHead, int utAtual){
+
+    int count = 0;
+    queuePtr aux = queueHead->nextNodePtr;
+
+    while (aux != NULL){
+
+        if (queueHead->tempoDesejado <= utAtual)
+            count++;
+        else
+            return count;
+    }
+    return count;
+}
