@@ -397,7 +397,7 @@ void *flightPlanner(){
 void *flightPlanner(){
 
 	int utAtual, arrivalsReady, departuresReady, i,count = 0;
-	int tempo, tempo_sec, tempo_nsec;
+	int tempo, tempo_sec, tempo_nsec, result;
 	queuePtr arrivalAux = arrivalQueue;
 	queuePtr departureAux = arrivalQueue;
 	struct timespec now = {0};
@@ -413,7 +413,7 @@ void *flightPlanner(){
 		utAtual = ((1000* (now.tv_sec - sharedMemPtr->Time.tv_sec) + abs(now.tv_nsec - sharedMemPtr->Time.tv_nsec)/1000000) / valuesPtr->unidadeTempo);
 		departuresReady = contaQueue(departureQueue, utAtual);
 		arrivalsReady = contaQueue(arrivalQueue, utAtual);
-		printf("%d\n",arrivalsReady);
+
 		if (arrivalsReady >= departuresReady && arrivalsReady >= 1){
 
 			if (arrivalsReady >= 1){
@@ -425,26 +425,23 @@ void *flightPlanner(){
 				while(arrivalAux->nextNodePtr != NULL){
 					if (count<2){
 						strcpy(arrivals[arrivalAux->nextNodePtr->slot].ordem,"WAIT");
+						arrivals[arrivalAux->nextNodePtr->slot].duration = 1;
 						count++;
 					}
 					else{
 						strcpy(arrivals[arrivalAux->nextNodePtr->slot].ordem,"HOLDING");
-						arrivals[arrivalAux->nextNodePtr->slot].duration = 20;
-						insereQueue(arrivalQueue, arrivalQueue->tempoDesejado + 20, arrivalQueue->fuel, arrivalQueue->prio, arrivalQueue->slot);
-						//REMOVER DO MEIO
-						removeQueue(arrivalAux); //DOESNT WORK
+						arrivals[arrivalAux->nextNodePtr->slot].duration = valuesPtr->minHolding;
+						insereQueue(arrivalQueue, arrivalAux->nextNodePtr->tempoDesejado + valuesPtr->minHolding, arrivalAux->nextNodePtr->fuel, arrivalAux->nextNodePtr->prio, arrivalAux->nextNodePtr->slot);
+						removeQueue(arrivalAux);
 					}
-					if(arrivalAux->nextNodePtr != NULL) arrivalAux= arrivalAux->nextNodePtr;
+					arrivalAux= arrivalAux->nextNodePtr;
 				}
 
 				pthread_cond_broadcast(&condArrival);
 				pthread_mutex_unlock(&decisionMutex);
-				//sleep(10);
+				timetoWait = ValorAbsoluto(now, valuesPtr->duracaoAterragem + valuesPtr->intervaloAterragens);
+				clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME,&timetoWait,NULL);
 				pthread_mutex_lock(&decisionMutex);
-			}
-
-			else{
-				//printf("Broken Arrivals\n");
 			}
 		}
 
@@ -457,44 +454,43 @@ void *flightPlanner(){
 					//FAZER FUNCOES PARA REMOVER A CABECA
 					removeQueue(departureQueue);
 				}
-				pthread_cond_broadcast(&condDeparture);
+				departureAux =departureQueue;
+				while(departureAux->nextNodePtr != NULL){
 
+					strcpy(departures[departureAux->nextNodePtr->slot].ordem,"WAIT");
+					// retirar com condition entre processos
+
+					departures[departureAux->nextNodePtr->slot].duration = 1;
+					departureAux= departureAux->nextNodePtr;
+				}
+
+				pthread_cond_broadcast(&condArrival);
 				pthread_mutex_unlock(&decisionMutex);
-				sleep(10);
+				timetoWait = ValorAbsoluto(now, valuesPtr->duracaoDescolagem + valuesPtr->intervaloDescolagens);
+				clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME,&timetoWait,NULL);
 				pthread_mutex_lock(&decisionMutex);
-			}
-
-			else{
-				//printf("Broken Departures\n");
 			}
 		}
 
 
 		count=0;
-		usleep(valuesPtr->unidadeTempo*1000);
 
-		/*  ÑAO FUNCIONA PARA DEPARTURES OU ARRIVALS NULOS E EU QUERO ME MATAR
 		if (departuresReady ==0  && arrivalsReady == 0){
-			if (departureQueue->nextNodePtr != NULL  || departureQueue->nextNodePtr->tempoDesejado <= arrivalQueue->nextNodePtr->tempoDesejado){
-				tempo_sec = (departureQueue->nextNodePtr->tempoDesejado) * valuesPtr->unidadeTempo /1000;
-		    	tempo_nsec = (departureQueue->nextNodePtr->tempoDesejado * valuesPtr->unidadeTempo %1000) *1000000;
 
-		    	timetoWait.tv_sec = sharedMemPtr->Time.tv_sec + tempo_sec + (tempo_nsec + sharedMemPtr->Time.tv_nsec) /1000000000;
-	        	timetoWait.tv_nsec = (tempo_nsec + sharedMemPtr->Time.tv_nsec) %1000000000;
+			if (departureQueue->nextNodePtr != NULL  && departureQueue->nextNodePtr->tempoDesejado <= arrivalQueue->nextNodePtr->tempoDesejado)
+	        	timetoWait = ValorAbsoluto(sharedMemPtr->Time,departureQueue->nextNodePtr->tempoDesejado);
 
-	        	pthread_cond_timedwait(&condGeral,&decisionMutex,&timetoWait);
-			}
-			else{
-				tempo_sec = (arrivalQueue->nextNodePtr->tempoDesejado) * valuesPtr->unidadeTempo /1000;
-		    	tempo_nsec = (arrivalQueue->nextNodePtr->tempoDesejado * valuesPtr->unidadeTempo %1000) *1000000;
+			else
+	        	timetoWait = ValorAbsoluto(sharedMemPtr->Time,arrivalQueue->nextNodePtr->tempoDesejado);
 
-		    	timetoWait.tv_sec = sharedMemPtr->Time.tv_sec + tempo_sec + (tempo_nsec + sharedMemPtr->Time.tv_nsec) /1000000000;
-	        	timetoWait.tv_nsec = (tempo_nsec + sharedMemPtr->Time.tv_nsec) %1000000000;
 
-	        	pthread_cond_timedwait(&condGeral,&decisionMutex,&timetoWait);
-			}
+          	result = pthread_cond_timedwait(&condGeral,&decisionMutex,&timetoWait);
+	       	if (result !=0  && result != ETIMEDOUT) {
+	             fprintf(stderr, "%s\n", strerror(result));
+	            exit(EXIT_FAILURE);
+
+	        }
 		}
-		*/
 		pthread_mutex_unlock(&decisionMutex);
 	}
 	
@@ -553,12 +549,12 @@ int newDeparture(messageQueuePtr mensagem, int departuresHelper){
 	insereQueue(departureQueue,mensagem->tempoDesejado,mensagem->fuel,1,departuresHelper);
 	pthread_cond_signal(&condGeral);
 
-	printf("NEW DEPARTURE -- td: %d\n", mensagem->tempoDesejado);
+	//printf("NEW DEPARTURE -- td: %d\n", mensagem->tempoDesejado);
 
 	reply->messageType = 3;
 	reply->id = departuresHelper;
 
-	strcpy(departures[departuresHelper++].ordem, "HOLDING420");
+	strcpy(departures[departuresHelper++].ordem, "WAIT");
 	msgsnd(messageQueueID, reply, sizeof(replyStruct), 0);
 
 	sharedMemPtr->totalDepartures++;
@@ -787,14 +783,12 @@ void timeComparator(){
 	timer = ((1000* (now.tv_sec - sharedMemPtr->Time.tv_sec) + (now.tv_nsec - sharedMemPtr->Time.tv_nsec)/1000000) / valuesPtr->unidadeTempo);
    
    	while ((arrivalHead->nextNodePtr != NULL) && (arrivalHead->nextNodePtr->init == timer)){
-		
 		copyArrival = arrivalCopy(arrivalHead->nextNodePtr);
 		removeArrival(arrivalHead);
 		pthread_create(&arrivalThreads[sizeArrivals++],NULL,ArrivalFlight,(void *)copyArrival);
     }
 
     while ((departureHead->nextNodePtr != NULL) && (departureHead->nextNodePtr->init == timer)){
-
     	copyDeparture = departureCopy(departureHead->nextNodePtr);
 		removeDeparture(departureHead);
    		pthread_create(&departureThreads[sizeDepartures++],NULL,DepartureFlight,(void *)copyDeparture);
@@ -812,7 +806,6 @@ void *timerCount(){
         aux=0;
 
         timeComparator();
-
         result = pthread_mutex_lock(&timeMutex);
 
         if (result != 0) {
@@ -836,8 +829,6 @@ void *timerCount(){
 
         else if (arrivalHead->nextNodePtr->init > departureHead->nextNodePtr->init)
             tempo = departureHead->nextNodePtr->init;
-
-
 
         timetoWait= ValorAbsoluto(sharedMemPtr->Time,tempo);
 
@@ -971,8 +962,7 @@ void *ArrivalFlight(void *flight){
 
 	messageQueuePtr enviar = criaMQStruct();
 	replyQueuePtr reply = criaReplyStruct();
-	int isWorking = 1,result;
-	struct timespec check = {0};
+	int result;
 	struct timespec tempo = {0};
 
 	insertLogfile("ARRIVAL STARTED =>",((arrivalPtr)flight)->nome);
@@ -990,19 +980,21 @@ void *ArrivalFlight(void *flight){
 	pthread_mutex_lock(&arrivalMutex);
 	msgrcv(messageQueueID, reply, sizeof(replyStruct), 3, 0);
 	calculaHora();	
-	printf("%02d:%02d:%02d VOO SLOT[%d] => Tenho a ordem: %s\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, reply->id, arrivals[reply->id].ordem);
 	clock_gettime(CLOCK_REALTIME, &tempo);
 
     tempo = ValorAbsoluto(sharedMemPtr->Time,enviar->tempoDesejado);
 	pthread_cond_timedwait(&condArrival,&arrivalMutex,&tempo);
 	while (strcmp(arrivals[reply->id].ordem,"ATERRAR")!=0){
+
 		clock_gettime(CLOCK_REALTIME, &tempo);
 
 		if (strcmp(arrivals[reply->id].ordem,"WAIT")==0){
+
     		tempo = ValorAbsoluto(tempo, arrivals[reply->id].duration);
 			pthread_cond_timedwait(&condArrival,&arrivalMutex,&tempo);
 		}
 		else if (strcmp(arrivals[reply->id].ordem,"HOLDING")==0){
+
 			calculaHora();
     		printf("%02d:%02d:%02d VOO SLOT[%d] => Tenho a ordem: %s\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, reply->id, arrivals[reply->id].ordem);
     		tempo = ValorAbsoluto(tempo, arrivals[reply->id].duration);
@@ -1012,6 +1004,7 @@ void *ArrivalFlight(void *flight){
 		}
 
 	}
+
 	pthread_mutex_unlock(&arrivalMutex);
 	calculaHora();	
 	printf("%02d:%02d:%02d VOO SLOT[%d] => Tenho a ordem: %s\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, reply->id, arrivals[reply->id].ordem);
@@ -1027,7 +1020,8 @@ void *DepartureFlight(void *flight){
 
 	messageQueuePtr enviar = criaMQStruct();
 	replyQueuePtr reply = criaReplyStruct();
-	int isWorking = 1;
+	int result;
+	struct timespec tempo = {0};
 
 	insertLogfile("DEPARTURE STARTED =>",((departurePtr)flight)->nome);
 
@@ -1035,13 +1029,27 @@ void *DepartureFlight(void *flight){
 	enviar->tempoDesejado = ((departurePtr)flight)->init + ((departurePtr)flight)->takeoff;
 
 	msgsnd(messageQueueID, enviar, sizeof(messageStruct), 0);
-	while (isWorking){
-		calculaHora();	
-		msgrcv(messageQueueID, reply, sizeof(replyStruct), 3, 0);
-		printf("%02d:%02d:%02d VOO SLOT[%d] => Tenho a ordem: %s\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, reply->id, arrivals[reply->id].ordem);
 
-		if (strcmp(arrivals[reply->id].ordem,"ATERRAR")==0) isWorking = 0;
+	calculaHora();	
+	msgrcv(messageQueueID, reply, sizeof(replyStruct), 3, 0);
+	pthread_mutex_lock(&departureMutex);
+	tempo = ValorAbsoluto(sharedMemPtr->Time,enviar->tempoDesejado);
+	pthread_cond_timedwait(&condDeparture, &departureMutex,&tempo);
+	while (strcmp(departures[reply->id].ordem,"LEVANTAR")!=0){
+
+		clock_gettime(CLOCK_REALTIME, &tempo);
+
+		if (strcmp(departures[reply->id].ordem,"WAIT")==0){
+
+    		tempo = ValorAbsoluto(tempo, departures[reply->id].duration);
+			pthread_cond_timedwait(&condDeparture,&departureMutex,&tempo);
+		}
+
 	}
+	pthread_mutex_unlock(&departureMutex);
+	printf("%02d:%02d:%02d VOO SLOT[%d] => Tenho a ordem: %s\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, reply->id, departures[reply->id].ordem);
+
+
 	usleep((valuesPtr->duracaoDescolagem) * (valuesPtr->unidadeTempo) * 1000);
 	insertLogfile("DEPARTURE CONCLUDED =>",((departurePtr)flight)->nome);
 	

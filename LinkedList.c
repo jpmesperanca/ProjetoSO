@@ -189,11 +189,12 @@ void removeDeparture(departurePtr departureHead){
 
 
 departurePtr departureCopy(departurePtr aux){
-    departurePtr copy;
+    departurePtr copy= criaDepartures();
     copy->nome=strdup(aux->nome);
     copy->init=aux->init;
     copy->takeoff=aux->takeoff;
     copy->nextNodePtr=NULL;
+
     return copy;
 }
 
@@ -258,7 +259,7 @@ void removeQueue(queuePtr queueHead){
 
     queuePtr aux = queueHead->nextNodePtr->nextNodePtr;
 
-    free(queueHead);
+    free(queueHead->nextNodePtr);
 
     queueHead->nextNodePtr = aux;
 
