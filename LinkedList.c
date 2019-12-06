@@ -222,7 +222,7 @@ void insereQueue(queuePtr queueHead, int tempoDesejado, int fuel, int prio, int 
     queuePtr aux = queueHead;
 
     if (prio != 1){
-	    while((aux->nextNodePtr != NULL) && (aux->nextNodePtr->tempoDesejado < tempoDesejado)){
+	    while((aux->nextNodePtr != NULL) && (aux->nextNodePtr->tempoDesejado <= tempoDesejado)){
 	        aux = aux->nextNodePtr;
 	    }
 	}
