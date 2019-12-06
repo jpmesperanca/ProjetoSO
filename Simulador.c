@@ -53,6 +53,7 @@ typedef struct shmSlots{
 
 	char ordem[15];
 	int duration;
+	int pista;
 	int inUse;
 
 } shmSlotsStruct;
@@ -396,7 +397,7 @@ void *flightPlanner(){
 
 void *flightPlanner(){
 
-	int utAtual, arrivalsReady, departuresReady, i,count = 0;
+	int utAtual, arrivalsReady, departuresReady, i,count = 0, pistaD = 0,pistaA = 0;
 	int tempo, tempo_sec, tempo_nsec, result;
 	queuePtr arrivalAux = arrivalQueue;
 	queuePtr departureAux = arrivalQueue;
@@ -419,6 +420,7 @@ void *flightPlanner(){
 			if (arrivalsReady >= 1){
 				for (i = 0; i < arrivalsReady && i < 2; i++){
 					strcpy(arrivals[arrivalQueue->nextNodePtr->slot].ordem,"ATERRAR");
+					arrivals[arrivalQueue->nextNodePtr->slot].pista = pistaA++ % 2;
 					removeQueue(arrivalQueue);
 				}
 				arrivalAux = arrivalQueue;
@@ -451,7 +453,7 @@ void *flightPlanner(){
 
 				for (i = 0; i < departuresReady && i < 2; i++){
 					strcpy(departures[departureQueue->nextNodePtr->slot].ordem,"LEVANTAR");
-					//FAZER FUNCOES PARA REMOVER A CABECA
+					departures[departureQueue->nextNodePtr->slot].pista = pistaD++ % 2;
 					removeQueue(departureQueue);
 				}
 				departureAux =departureQueue;
@@ -477,19 +479,28 @@ void *flightPlanner(){
 
 		if (departuresReady ==0  && arrivalsReady == 0){
 
-			if (departureQueue->nextNodePtr != NULL  && departureQueue->nextNodePtr->tempoDesejado <= arrivalQueue->nextNodePtr->tempoDesejado)
+			if (departureQueue->nextNodePtr != NULL &&( arrivalQueue->nextNodePtr == NULL || departureQueue->nextNodePtr->tempoDesejado <= arrivalQueue->nextNodePtr->tempoDesejado)){
 	        	timetoWait = ValorAbsoluto(sharedMemPtr->Time,departureQueue->nextNodePtr->tempoDesejado);
+	        	result = pthread_cond_timedwait(&condGeral,&decisionMutex,&timetoWait);
+		       	if (result !=0  && result != ETIMEDOUT) {
+		            fprintf(stderr, "%s\n", strerror(result));
+		            exit(EXIT_FAILURE);
 
-			else
+		        }
+			}
+
+			else if (arrivalQueue->nextNodePtr != NULL &&( departureQueue->nextNodePtr == NULL || arrivalQueue->nextNodePtr->tempoDesejado <= departureQueue->nextNodePtr->tempoDesejado)){
 	        	timetoWait = ValorAbsoluto(sharedMemPtr->Time,arrivalQueue->nextNodePtr->tempoDesejado);
+	        	result = pthread_cond_timedwait(&condGeral,&decisionMutex,&timetoWait);
+		       	if (result !=0  && result != ETIMEDOUT) {
+		            fprintf(stderr, "%s\n", strerror(result));
+		            exit(EXIT_FAILURE);
 
+		        }
+			}
 
-          	result = pthread_cond_timedwait(&condGeral,&decisionMutex,&timetoWait);
-	       	if (result !=0  && result != ETIMEDOUT) {
-	             fprintf(stderr, "%s\n", strerror(result));
-	            exit(EXIT_FAILURE);
+			else pthread_cond_wait(&condGeral,&decisionMutex);
 
-	        }
 		}
 		pthread_mutex_unlock(&decisionMutex);
 	}
@@ -963,6 +974,7 @@ void *ArrivalFlight(void *flight){
 	messageQueuePtr enviar = criaMQStruct();
 	replyQueuePtr reply = criaReplyStruct();
 	int result;
+	char pista[4];
 	struct timespec tempo = {0};
 
 	insertLogfile("ARRIVAL STARTED =>",((arrivalPtr)flight)->nome);
@@ -1005,9 +1017,12 @@ void *ArrivalFlight(void *flight){
 
 	}
 
+	if (arrivals[reply->id].pista == 0) strcpy(pista,"28L");
+	else strcpy(pista,"28R");
+
 	pthread_mutex_unlock(&arrivalMutex);
 	calculaHora();	
-	printf("%02d:%02d:%02d VOO SLOT[%d] => Tenho a ordem: %s\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, reply->id, arrivals[reply->id].ordem);
+	printf("%02d:%02d:%02d VOO SLOT[%d] => Tenho a ordem: %s NA PISTA %s\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, reply->id, arrivals[reply->id].ordem, pista);
 	usleep((valuesPtr->duracaoAterragem) * (valuesPtr->unidadeTempo) * 1000);
 	insertLogfile("ARRIVAL CONCLUDED =>",((arrivalPtr)flight)->nome);
 
@@ -1021,6 +1036,7 @@ void *DepartureFlight(void *flight){
 	messageQueuePtr enviar = criaMQStruct();
 	replyQueuePtr reply = criaReplyStruct();
 	int result;
+	char pista[4];
 	struct timespec tempo = {0};
 
 	insertLogfile("DEPARTURE STARTED =>",((departurePtr)flight)->nome);
@@ -1046,8 +1062,12 @@ void *DepartureFlight(void *flight){
 		}
 
 	}
+
+	if (departures[reply->id].pista == 0) strcpy(pista,"00L");
+	else strcpy(pista,"00R");
+
 	pthread_mutex_unlock(&departureMutex);
-	printf("%02d:%02d:%02d VOO SLOT[%d] => Tenho a ordem: %s\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, reply->id, departures[reply->id].ordem);
+	printf("%02d:%02d:%02d VOO SLOT[%d] => Tenho a ordem: %s DA PISTA %s\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, reply->id, departures[reply->id].ordem, pista);
 
 
 	usleep((valuesPtr->duracaoDescolagem) * (valuesPtr->unidadeTempo) * 1000);
