@@ -82,7 +82,9 @@ typedef struct sharedMemStruct{
 	struct tm * structHoras;
 	struct timespec Time;
 	statsStruct estatisticas;
-
+	pid_t towerPid;
+	int running;
+	int isActive;
 	int totalArrivals;
 	int totalDepartures;
 
@@ -108,7 +110,7 @@ void inicializaStats();
 void controlTower();
 void flightManager();
 void readConfig();
-void terminate();
+void terminator();
 void calculaHora();
 void criaSharedMemory();
 int criaPipe();
@@ -120,6 +122,7 @@ void endLog();
 
 void *timerCount();
 void timeComparator();
+void showStats();
 void initializeSlots();
 void *ArrivalFlight(void* );
 void *DepartureFlight(void* );
@@ -132,13 +135,16 @@ void testMQ();
 
 void *fuelUpdater();
 void *flightPlanner();
+void clearTower();
 void arrivalOrders(queuePtr arrivalQueue, int num);
 void Aterragem(struct timespec tempo);
 void Descolagem(struct timespec tempo);
 struct timespec ValorAbsoluto(struct timespec now,int tempo);
 
-//Exit Condition
-int isActive= 1;
+//SIGNALS 
+sigset_t blocker;
+
+//sem_t* exitsem;
 
 //MESSAGE QUEUE
 int messageQueueID;
@@ -191,11 +197,20 @@ queuePtr arrivalQueue;
 queuePtr departureQueue;
 
 int main() {
-
+	
 	pid_t childPid;
 
-	signal(SIGINT,terminate);
-	
+	printf("PID para STATS / EXIT -- %d\n", getpid());
+
+	sigfillset(&blocker);
+	sigdelset(&blocker, SIGINT);
+	sigdelset(&blocker, SIGUSR1);
+	sigdelset(&blocker, SIGUSR2);
+	sigprocmask(SIG_SETMASK, &blocker, NULL);
+
+	signal(SIGINT, terminator);
+	signal(SIGUSR1, showStats);
+
 	readConfig();
 	criaSharedMemory();
 	criaMessageQueue();
@@ -212,7 +227,7 @@ int main() {
 	flightManager();
 
 	wait(NULL);
-	terminate();
+	terminator();
 	
 	return 0;
 }
@@ -225,12 +240,16 @@ void controlTower() {
 	int arrivalsHelper = 0; 
 	int departuresHelper = 0;
 
+	sharedMemPtr->towerPid = getpid();
+	
+	signal(SIGUSR2, clearTower);
+
 	arrivalQueue = criaQueue();
 	departureQueue = criaQueue();
 
 	messageQueuePtr mensagem = criaMQStruct();
 
-	while(isActive == 1){
+	while(sharedMemPtr->running){
 		
 		msgrcv(messageQueueID, mensagem, sizeof(messageStruct), -2, 0);
 
@@ -258,8 +277,17 @@ void controlTower() {
 			}
 		}
 		else sharedMemPtr->estatisticas.numeroRejeitados++;
-
 	}
+}
+
+void clearTower(){
+
+	sharedMemPtr->running = 0;
+	pthread_join(timeThread,NULL);
+	pthread_join(fuelThread,NULL);
+	pthread_cond_destroy(&condTime);
+	pthread_cond_destroy(&creator);
+	exit(0);
 }
 
 /*
@@ -409,7 +437,8 @@ void *flightPlanner(){
 	queuePtr departureAux = arrivalQueue;
 	struct timespec now = {0};
 	struct timespec timetoWait = {0};
-	while(isActive){
+
+	while(sharedMemPtr->running){
 
 		pthread_mutex_lock(&decisionMutex);
 
@@ -417,14 +446,13 @@ void *flightPlanner(){
 	        perror("clock_gettime");
 	        exit(EXIT_FAILURE);
 	    }
+
 		utAtual = ((1000* (now.tv_sec - sharedMemPtr->Time.tv_sec) + abs(now.tv_nsec - sharedMemPtr->Time.tv_nsec)/1000000) / valuesPtr->unidadeTempo);
-		departuresReady = contaQueue(departureQueue, utAtual); //printf("ReadyD%d\n", departuresReady);
+		departuresReady = contaQueue(departureQueue, utAtual);
 
-		arrivalsReady = contaQueue(arrivalQueue, utAtual); //printf("ReadyA%d\n",arrivalsReady);
+		arrivalsReady = contaQueue(arrivalQueue, utAtual);
 
-
-		if (arrivalsReady >= departuresReady && arrivalsReady >= 1){
-
+		if (arrivalsReady >= departuresReady && arrivalsReady >= 1 || (arrivalAux->nextNodePtr->prio == 1  && departureAux->nextNodePtr->tempoDesejado + valuesPtr->duracaoDescolagem + valuesPtr->intervaloDescolagens > arrivalAux->nextNodePtr->fuel)){
 
 			for (i = 0; i < arrivalsReady && i < 2; i++){
 				if (arrivals[arrivalAux->nextNodePtr->slot].check == 0){
@@ -438,7 +466,7 @@ void *flightPlanner(){
 				}
 			}
 
-			arrivalOrders(arrivalQueue, 3);
+			arrivalOrders(arrivalQueue, 2 + arrivalsReady);
 
 			pthread_mutex_unlock(&decisionMutex);
 			timetoWait = ValorAbsoluto(now, valuesPtr->duracaoAterragem + valuesPtr->intervaloAterragens);
@@ -454,15 +482,15 @@ void *flightPlanner(){
 				strcpy(departures[departureQueue->nextNodePtr->slot].ordem,"LEVANTAR");
 				departures[departureQueue->nextNodePtr->slot].pista = pistaD++ % 2;
 				removeQueue(departureQueue);
-							}
-			departureAux =departureQueue;
+			}
+
+			departureAux = departureQueue;
+
 			while(departureAux->nextNodePtr != NULL){
 
 				strcpy(departures[departureAux->nextNodePtr->slot].ordem,"WAIT");
-				// retirar com condition entre processos
-
 				departures[departureAux->nextNodePtr->slot].duration = 1;
-				departureAux= departureAux->nextNodePtr;
+				departureAux = departureAux->nextNodePtr;
 			}
 
 
@@ -509,6 +537,7 @@ void *flightPlanner(){
 }
 
 void arrivalOrders(queuePtr arrivalQueue, int num){
+
 	queuePtr arrivalAux = arrivalQueue;
 	int count = 0;
 
@@ -550,7 +579,7 @@ void *fuelUpdater(){
 
     tempo = ValorAbsoluto(sharedMemPtr->Time,ut++);
 
-	while(isActive == 1){
+	while(sharedMemPtr->running){
 
 		result = clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME,&tempo,NULL);
 		if (result !=0 && result !=EINVAL){
@@ -687,22 +716,22 @@ void flightManager() {
 	startLog();
 
 
-	while(isActive == 1){
+	while (sharedMemPtr->isActive){
 
 		i = 0;
 
 		read(fdNamedPipe,&letra,1);
 
-		while ( letra != '\n') {
+		while (letra != '\n') {
 			comando[i++] = letra;
 			read(fdNamedPipe,&letra,1);	
 		}
 		
 		comando[i] = '\0';
 
-		if (strcmp(comando,"exit") == 0) isActive = 0;
+		//if (strcmp(comando,"exit") == 0) isActive = 0;
 			
-		else if ((comando[0] == 'A') && (confirmaSintaxe(comando, ARRIVAL_PATTERN) == 1)){
+		if ((comando[0] == 'A') && (confirmaSintaxe(comando, ARRIVAL_PATTERN) == 1)){
 
 			processaArrival(comando);
 			//printArrivals(arrivalHead);
@@ -717,6 +746,9 @@ void flightManager() {
 		else insertLogfile("WRONG COMMAND =>",comando);
 	}
 
+	unlink(PIPE_NAME);
+	remove(PIPE_NAME);
+	//PRINTAR NO LOG O RESTO DO BUFFER
 }
 
 
@@ -736,6 +768,8 @@ void criaSharedMemory(){
 
 	sharedMemPtr->totalArrivals = 0;
 	sharedMemPtr->totalDepartures = 0;
+	sharedMemPtr->running = 1;
+	sharedMemPtr->isActive = 1;
 
 	inicializaStats();
 
@@ -848,7 +882,7 @@ void *timerCount(){
      int tempo=0, tempo_sec=0, tempo_nsec=0;
      struct timespec timetoWait = { 0 };
 
-     while(isActive == 1){
+     while(sharedMemPtr->running){
 
         aux=0;
 
@@ -1037,6 +1071,7 @@ void *ArrivalFlight(void *flight){
 
     tempo = ValorAbsoluto(sharedMemPtr->Time,enviar->tempoDesejado);
 	pthread_cond_timedwait(&condArrival,&arrivalMutex,&tempo);
+
 	while (isWorking){
 
 		clock_gettime(CLOCK_REALTIME, &tempo);
@@ -1053,7 +1088,10 @@ void *ArrivalFlight(void *flight){
 			insertLogfile("ARRIVAL CONCLUDED =>",((arrivalPtr)flight)->nome);
 			sharedMemPtr->totalArrivals--;
 			isWorking = 0; 
-
+			pthread_mutex_lock(&statsMutex);
+			sharedMemPtr->estatisticas.totalArrivals++;
+			sharedMemPtr->estatisticas.tempoEsperadoA += utAtual - tempoDesejado - valuesPtr->duracaoAterragem;
+			pthread_mutex_unlock(&statsMutex);
 		}
 
 		else if (strcmp(arrivals[reply->id].ordem,"WAIT") == 0){
@@ -1080,7 +1118,10 @@ void *ArrivalFlight(void *flight){
 			calculaHora();
     		printf("%02d:%02d:%02d VOO %s => Tenho a ordem: %s\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, ((arrivalPtr)flight)->nome, arrivals[reply->id].ordem);
    			sharedMemPtr->totalArrivals--;
-   			isWorking = 0; 		
+   			isWorking = 0;
+   			pthread_mutex_lock(&statsMutex);
+			sharedMemPtr->estatisticas.numeroVoosRedirecionados++;
+			pthread_mutex_unlock(&statsMutex); 		
 		}
 
 	}
@@ -1094,13 +1135,9 @@ void *ArrivalFlight(void *flight){
 
 	utAtual = ((1000* (now.tv_sec - sharedMemPtr->Time.tv_sec) + abs(now.tv_nsec - sharedMemPtr->Time.tv_nsec)/1000000) / valuesPtr->unidadeTempo);
 	
-	pthread_mutex_lock(&statsMutex);
-	sharedMemPtr->totalArrivals--;
-	sharedMemPtr->estatisticas.totalArrivals++;
+	if (sharedMemPtr->totalArrivals == 0 && sharedMemPtr->totalDepartures == 0 && sharedMemPtr->isActive == 0)
+		kill(sharedMemPtr->towerPid, SIGUSR2);
 
-	sharedMemPtr->estatisticas.tempoEsperadoA += utAtual - tempoDesejado - valuesPtr->duracaoAterragem;
-	pthread_mutex_unlock(&statsMutex);
-	
 	pthread_exit(0);
 }
 
@@ -1134,16 +1171,15 @@ void *DepartureFlight(void *flight){
     		tempo = ValorAbsoluto(tempo, departures[reply->id].duration);
 			pthread_cond_timedwait(&condDeparture,&departureMutex,&tempo);
 		}
-
 	}
 
 	if (departures[reply->id].pista == 0) strcpy(pista,"01L");
 	else strcpy(pista,"01R");
+	
 	calculaHora();
 
 	pthread_mutex_unlock(&departureMutex);
 	printf("%02d:%02d:%02d VOO %s => Tenho a ordem: %s DA PISTA %s\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, ((departurePtr)flight)->nome, departures[reply->id].ordem, pista);
-
 
 	usleep((valuesPtr->duracaoDescolagem) * (valuesPtr->unidadeTempo) * 1000);
 	insertLogfile("DEPARTURE CONCLUDED =>",((departurePtr)flight)->nome);
@@ -1163,58 +1199,62 @@ void *DepartureFlight(void *flight){
 	sharedMemPtr->estatisticas.tempoEsperadoD += utAtual - tempoDesejado - valuesPtr->duracaoDescolagem;
 	pthread_mutex_unlock(&statsMutex);
 	
+	if (sharedMemPtr->totalArrivals == 0 && sharedMemPtr->totalDepartures == 0 && sharedMemPtr->isActive == 0)
+		kill(sharedMemPtr->towerPid, SIGUSR2);
+
 	pthread_exit(0);
 }
 
 void showStats(){
 
-	printf("\n\n PRINTING STATS \n");
+	printf("\n PRINTING STATS \n");
 	printf("Voos criados -- %d\n", sharedMemPtr->estatisticas.totalVoos);
 	printf("Voos que aterraram -- %d\n", sharedMemPtr->estatisticas.totalArrivals);
 	printf("Voos que descolaram -- %d\n", sharedMemPtr->estatisticas.totalDepartures);
 	printf("Voos rejeitados pela Torre de Controlo -- %d\n", sharedMemPtr->estatisticas.numeroRejeitados);
 	printf("Voos redirecionados -- %d\n", sharedMemPtr->estatisticas.numeroVoosRedirecionados);
-	printf("Tempo médio de espera (A) -- %03lf\n", (float)sharedMemPtr->estatisticas.tempoEsperadoA / sharedMemPtr->estatisticas.totalArrivals);
-	printf("Tempo médio de espera (D) -- %03lf\n", (float)sharedMemPtr->estatisticas.tempoEsperadoD / sharedMemPtr->estatisticas.totalDepartures);
-	printf("Holding por aterragem -- %03lf\n", (float)sharedMemPtr->estatisticas.numeroHoldings / sharedMemPtr->estatisticas.totalArrivals);
-	printf("Holding por aterragem prioritária -- %03lf\n", (float)sharedMemPtr->estatisticas.numeroHoldingsPrio / sharedMemPtr->estatisticas.totalPrio);
+
+	if (sharedMemPtr->estatisticas.totalArrivals == 0)
+		printf("Holding por aterragem prioritária -- 0\n");
+	else
+		printf("Tempo médio de espera (A) -- %03lf\n", (float)sharedMemPtr->estatisticas.tempoEsperadoA / sharedMemPtr->estatisticas.totalArrivals);
+
+	if (sharedMemPtr->estatisticas.totalDepartures == 0)
+		printf("Holding por aterragem prioritária -- 0\n");
+	else
+		printf("Tempo médio de espera (D) -- %03lf\n", (float)sharedMemPtr->estatisticas.tempoEsperadoD / sharedMemPtr->estatisticas.totalDepartures);
+
+	if (sharedMemPtr->estatisticas.totalArrivals == 0)
+		printf("Holding por aterragem prioritária -- 0\n");
+	else
+		printf("Holding por aterragem -- %03lf\n", (float)sharedMemPtr->estatisticas.numeroHoldings / sharedMemPtr->estatisticas.totalArrivals);
+	
+	if (sharedMemPtr->estatisticas.totalPrio == 0)
+		printf("Holding por aterragem prioritária -- 0\n");
+	else
+		printf("Holding por aterragem prioritária -- %03lf\n", (float)sharedMemPtr->estatisticas.numeroHoldingsPrio / sharedMemPtr->estatisticas.totalPrio);
+
 	printf("\n-- END OF STATS --\n");
 }
 
-void terminate(){
+void terminator(){
 
 	int i;
-	isActive = 0;
-	printf("Tutto finisce..\n");
+	
+	printf("\nTutto finisce..\n");
 
+	sharedMemPtr->isActive = 0;
+
+	wait(NULL);
 	showStats();
-	//Just in case
-	pthread_cond_signal(&condTime);
-	pthread_cond_signal(&creator);
-
-	pthread_cond_destroy(&condTime);
-	pthread_cond_destroy(&creator);
-
-	pthread_join(timeThread,NULL);
-
-	for(int i=0;i<sizeArrivals;i++){
-		pthread_join(arrivalThreads[i],NULL);
-	}
-	for(int i=0;i<sizeDepartures;i++){
-		pthread_join(departureThreads[i],NULL);
-	}
-
-	pthread_join(fuelThread,NULL);
-
 
 	freeArrivals(arrivalHead);
 	freeDepartures(departureHead);
+
 	msgctl(messageQueueID, IPC_RMID, 0);
 
-	unlink(PIPE_NAME);
-	remove(PIPE_NAME);
-
 	endLog();
+	fclose(logFile);
 
 	shmdt(sharedMemPtr);
 	shmctl(shmid,IPC_RMID,NULL);
@@ -1222,9 +1262,7 @@ void terminate(){
 	shmctl(shmidDepartures,IPC_RMID,NULL);
 	shmdt(arrivals);
 	shmctl(shmidArrivals,IPC_RMID,NULL);
-
-
-	fclose(logFile);
+	
 	printf("Dappertutto!\n");
 	exit(0);
 }
@@ -1264,8 +1302,6 @@ void calculaHora(){
 	time(&tempo);
  	sharedMemPtr->structHoras = localtime(&tempo);
 }
-
-
 
 struct timespec ValorAbsoluto(struct timespec now,int tempo){
 	struct timespec timetoWait = {0};
