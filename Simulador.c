@@ -320,10 +320,11 @@ void *flightPlanner(){
 	        exit(EXIT_FAILURE);
 	    }
 
+	    utAtual = ((1000* (now.tv_sec - sharedMemPtr->Time.tv_sec) + abs(now.tv_nsec - sharedMemPtr->Time.tv_nsec)/1000000) / valuesPtr->unidadeTempo);
 		departuresReady = contaQueue(departureQueue, utAtual);
-
 		arrivalsReady = contaQueue(arrivalQueue, utAtual);
-		if (arrivalsReady>= departuresReady && arrivalsReady >0 || (departureAux->nextNodePtr->tempoDesejado + valuesPtr->duracaoDescolagem + valuesPtr->intervaloDescolagens > arrivalAux->nextNodePtr->fuel)){
+		
+		if ((arrivalsReady>= departuresReady && arrivalsReady >0) || (departureAux->nextNodePtr->tempoDesejado + valuesPtr->duracaoDescolagem + valuesPtr->intervaloDescolagens > arrivalAux->nextNodePtr->fuel)){
 			
 			if (arrivalsReady == 0){
 				timetoWait = ValorAbsoluto(sharedMemPtr->Time,arrivalQueue->nextNodePtr->tempoDesejado);
@@ -382,7 +383,7 @@ void *flightPlanner(){
 
 		count=0;
 
-		if (departuresReady ==0  && arrivalsReady == 0){
+		if (departuresReady ==0  || arrivalsReady == 0){
 
 			if (departureQueue->nextNodePtr != NULL &&( arrivalQueue->nextNodePtr == NULL || departureQueue->nextNodePtr->tempoDesejado <= arrivalQueue->nextNodePtr->tempoDesejado)){
 	        	timetoWait = ValorAbsoluto(sharedMemPtr->Time,departureQueue->nextNodePtr->tempoDesejado);
@@ -1007,11 +1008,7 @@ void *ArrivalFlight(void *flight){
 	arrivals[reply->id].inUse = 1;
 
 	// PROBABLY NOT IN THE BEST PLACE, PQ MUDAMOS COISAS 
-	if (clock_gettime(CLOCK_REALTIME, &now) == -1) {
-	        perror("clock_gettime");
-	        exit(EXIT_FAILURE);
-	    }
-	
+
 	if (sharedMemPtr->totalArrivals == 0 && sharedMemPtr->totalDepartures == 0 && sharedMemPtr->isActive == 0)
 		kill(sharedMemPtr->towerPid, SIGUSR2);
 

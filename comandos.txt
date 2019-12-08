@@ -1,12 +1,4 @@
-ARRIVAL TP0 init: 10 eta: 20 fuel: 46
+ARRIVAL TP0 init: 10 eta: 20 fuel: 50
 ARRIVAL TP1 init: 10 eta: 20 fuel: 10000
 DEPARTURE TP102 init: 10 takeoff: 15
 DEPARTURE TP103 init: 15 takeoff: 15
-comando erradoL
-KASDAS
-DEPARTURE TP103 init: 15 takeoff: 15A
-ADEPARTURE TP103 init: 15 takeoff: 15A
-AADEPARTURE TP103 init: 15 takeoff: 15
-DEPARTURE TP103 init: 15 takeoff: 15 a
-A
-
