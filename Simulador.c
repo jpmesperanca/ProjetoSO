@@ -1,3 +1,5 @@
+// PROJETO REALIZADO POR JOSÉ ESPERANÇA - 2018278596 E JOÃO MARCELINO - 2018279700
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -54,6 +56,7 @@ typedef struct shmSlots{
 
 	char ordem[15];
 	int duration;
+	int fuel;
 	int pista;
 	int check;
 	int inUse;
@@ -428,6 +431,7 @@ void arrivalOrders(queuePtr arrivalQueue, int num){
 		}
 		else if (arrivals[arrivalAux->nextNodePtr->slot].check++ == 0){
 			strcpy(arrivals[arrivalAux->nextNodePtr->slot].ordem,"HOLDING");
+			arrivals[arrivalAux->nextNodePtr->slot].fuel = arrivalAux->nextNodePtr->fuel;
 			sharedMemPtr->estatisticas.numeroHoldings++;
 			arrivals[arrivalAux->nextNodePtr->slot].duration = valuesPtr->minHolding;
 			insereQueue(arrivalQueue, arrivalAux->nextNodePtr->tempoDesejado + valuesPtr->minHolding, arrivalAux->nextNodePtr->fuel, arrivalAux->nextNodePtr->prio, arrivalAux->nextNodePtr->slot);
@@ -555,10 +559,10 @@ void initializeSlots(){
 
 	int i;
 
-	for (i = 0; i < valuesPtr->maxChegadas; i++){
-		arrivals[i].inUse = 2;}
+	for (i = 0; i < valuesPtr->maxChegadas; i++)
+		arrivals[i].inUse = 0;
 	for (i = 0; i < valuesPtr->maxPartidas; i++)
-		departures[i].inUse = 2;
+		departures[i].inUse = 0;
 }
 
 
@@ -923,6 +927,8 @@ void *ArrivalFlight(void *flight){
 	int isWorking = 1;
 	int result, utAtual, tempoDesejado;
 	char pista[4];
+	char* str1 = malloc(30*sizeof(char));
+	char* str2 = malloc(100*sizeof(char));
 	struct timespec tempo = {0};
 	struct timespec now;
 
@@ -933,8 +939,11 @@ void *ArrivalFlight(void *flight){
 	enviar->fuel = ((arrivalPtr)flight)->fuel;
 	enviar->tempoDesejado = tempoDesejado;
 	
-	if (4 + enviar->tempoDesejado + valuesPtr->duracaoAterragem >= enviar->fuel)
+	if (4 + enviar->tempoDesejado + valuesPtr->duracaoAterragem >= enviar->fuel){
 		enviar->messageType = 2;
+		sprintf(str1, "ARRIVAL %s =>", ((arrivalPtr)flight)->nome);
+		insertLogfile(str1,"EMERGENCY LANDING REQUESTED");
+	}
 	
 	else
 		enviar->messageType = 1;
@@ -960,6 +969,9 @@ void *ArrivalFlight(void *flight){
 
 			calculaHora();	
 			printf("%02d:%02d:%02d VOO SLOT %s => Tenho a ordem: %s NA PISTA %s\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, ((arrivalPtr)flight)->nome, arrivals[reply->id].ordem, pista);
+			sprintf(str1, "ARRIVAL %s =>", ((arrivalPtr)flight)->nome);
+			sprintf(str2, "Ordem de aterragem em %s", pista);
+			insertLogfile(str1,str2);
 			usleep((valuesPtr->duracaoAterragem) * (valuesPtr->unidadeTempo) * 1000);
 			insertLogfile("ARRIVAL CONCLUDED =>",((arrivalPtr)flight)->nome);
 			sharedMemPtr->totalArrivals--;
@@ -981,6 +993,9 @@ void *ArrivalFlight(void *flight){
 			calculaHora();
     		printf("%02d:%02d:%02d %s => Tenho a ordem: %s\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec,((arrivalPtr)flight)->nome, arrivals[reply->id].ordem);
     		tempo = ValorAbsoluto(tempo, arrivals[reply->id].duration);
+    		sprintf(str1, "ARRIVAL %s =>", ((arrivalPtr)flight)->nome);
+			sprintf(str2, "HOLDING %d, fuel:%d", arrivals[reply->id].duration, arrivals[reply->id].fuel);
+    		insertLogfile(str1,str2);
     		pthread_mutex_unlock(&arrivalMutex);
 			clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME,&tempo,NULL);
 			arrivals[reply->id].check--;
@@ -993,6 +1008,8 @@ void *ArrivalFlight(void *flight){
 			pthread_mutex_unlock(&arrivalMutex);
 			calculaHora();
     		printf("%02d:%02d:%02d VOO %s => Tenho a ordem: %s\n", sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec, ((arrivalPtr)flight)->nome, arrivals[reply->id].ordem);
+   			sprintf(str1, "ARRIVAL %s =>", ((arrivalPtr)flight)->nome);
+    		insertLogfile(str1, "DESVIO PARA OUTRO AEROPORTO");
    			sharedMemPtr->totalArrivals--;
    			isWorking = 0;
    			pthread_mutex_lock(&statsMutex);
