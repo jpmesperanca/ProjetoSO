@@ -321,6 +321,12 @@ void *flightPlanner(){
 	        	pthread_cond_timedwait(&condGeral,&decisionMutex,&timetoWait);
 			}
 			if (arrivalsReady > 0){
+
+				if(lastflight == 1){ // LAST ARRIVALS
+					timetoWait = ValorAbsoluto(now, valuesPtr->intervaloAterragens);
+					clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME,&timetoWait,NULL);
+				}
+
 				for (i = 0; i < arrivalsReady && i < 2; i++){
 					if (arrivals[arrivalAux->nextNodePtr->slot].check == 0){
 						strcpy(arrivals[arrivalAux->nextNodePtr->slot].ordem,"ATERRAR");
@@ -337,12 +343,9 @@ void *flightPlanner(){
 				arrivalOrders(arrivalQueue, 5 - count);
 		
 				pthread_mutex_unlock(&decisionMutex);
-				if(lastflight == 1) // LAST ARRIVALS
-					timetoWait = ValorAbsoluto(now, valuesPtr->duracaoAterragem + valuesPtr->intervaloAterragens);
-				else if(lastflight == 0) // LAST DEPARTURE
-					timetoWait = ValorAbsoluto(now, valuesPtr->duracaoAterragem);
-				else timetoWait = ValorAbsoluto(now, valuesPtr->duracaoAterragem);
+
 				lastflight = 1;
+				timetoWait = ValorAbsoluto(now, valuesPtr->duracaoAterragem);
 				clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME,&timetoWait,NULL);
 				pthread_mutex_lock(&decisionMutex);
 			}
@@ -350,6 +353,8 @@ void *flightPlanner(){
 
 		else if (departuresReady > arrivalsReady && departuresReady >= 1){
 			
+			if(lastflight == 0) // LAST DEPARTURE
+				timetoWait = ValorAbsoluto(now, valuesPtr->duracaoDescolagem + valuesPtr->intervaloDescolagens);
 
 			for (i = 0; i < departuresReady && i < 2; i++){
 				strcpy(departures[departureQueue->nextNodePtr->slot].ordem,"LEVANTAR");
@@ -370,12 +375,8 @@ void *flightPlanner(){
 			arrivalOrders(arrivalQueue, 5);
 
 			pthread_mutex_unlock(&decisionMutex);
-			if(lastflight == 1) // LAST ARRIVALS
-				timetoWait = ValorAbsoluto(now, valuesPtr->duracaoDescolagem);
-			else if(lastflight == 0) // LAST DEPARTURE
-				timetoWait = ValorAbsoluto(now, valuesPtr->duracaoDescolagem + valuesPtr->intervaloDescolagens);
-			else timetoWait = ValorAbsoluto(now, valuesPtr->duracaoDescolagem);
 			lastflight = 0;
+			timetoWait = ValorAbsoluto(now, valuesPtr->duracaoDescolagem);
 			clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME,&timetoWait,NULL);
 			pthread_mutex_lock(&decisionMutex);
 		
@@ -436,8 +437,8 @@ void arrivalOrders(queuePtr arrivalQueue, int num){
 			strcpy(arrivals[arrivalAux->nextNodePtr->slot].ordem,"HOLDING");
 			arrivals[arrivalAux->nextNodePtr->slot].fuel = arrivalAux->nextNodePtr->fuel;
 			sharedMemPtr->estatisticas.numeroHoldings++;
-			arrivals[arrivalAux->nextNodePtr->slot].duration = valuesPtr->minHolding;
-			insereQueue(arrivalQueue, arrivalAux->nextNodePtr->tempoDesejado + valuesPtr->minHolding, arrivalAux->nextNodePtr->fuel, arrivalAux->nextNodePtr->prio, arrivalAux->nextNodePtr->slot);
+			arrivals[arrivalAux->nextNodePtr->slot].duration =valuesPtr->minHolding + rand() %(valuesPtr->minHolding + valuesPtr->maxHolding);
+			insereQueue(arrivalQueue, arrivalAux->nextNodePtr->tempoDesejado + arrivals[arrivalAux->nextNodePtr->slot].duration, arrivalAux->nextNodePtr->fuel, arrivalAux->nextNodePtr->prio, arrivalAux->nextNodePtr->slot);
 			removeQueue(arrivalAux);
 		}
 		else arrivalAux = arrivalAux->nextNodePtr;
