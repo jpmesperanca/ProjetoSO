@@ -297,7 +297,7 @@ void clearTower(){
 	pthread_mutex_destroy(&departureMutex);
 	pthread_mutex_destroy(&fuelMutex);
 	pthread_mutex_destroy(&decisionMutex);
-
+	printf("Cleantower\n");
 	exit(0);
 }
 
@@ -568,7 +568,8 @@ void flightManager() {
 	char* comando = malloc(60*sizeof(char));
 	int fdNamedPipe, i , result;
 	
-	signal(SIGUSR2, SIG_IGN);
+	signal(SIGUSR2, terminator);
+
 	result = clock_gettime(CLOCK_REALTIME, &sharedMemPtr->Time);
     if (result == -1) {
         perror("clock_gettime");
