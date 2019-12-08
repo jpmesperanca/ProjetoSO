@@ -150,7 +150,6 @@ sigset_t blocker;
 
 //MESSAGE QUEUE
 int messageQueueID;
-sem_t* msgsem;
 
 //SHARED MEMORY
 memoryPtr sharedMemPtr;
@@ -187,6 +186,7 @@ pthread_cond_t condGeral = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t statsMutex = PTHREAD_MUTEX_INITIALIZER;
 
 int PISTAS[4];
+int started = 0;
 
 arrivalPtr arrivalHead;
 departurePtr departureHead;
@@ -228,9 +228,6 @@ int main() {
 	printf("Entering Flight Manager\n");
 	flightManager();
 
-	wait(NULL);
-	terminator();
-	
 	return 0;
 }
 
@@ -245,6 +242,7 @@ void controlTower() {
 	sharedMemPtr->towerPid = getpid();
 	
 	signal(SIGUSR2, clearTower);
+	signal(SIGINT, SIG_IGN);
 
 	arrivalQueue = criaQueue();
 	departureQueue = criaQueue();
@@ -286,11 +284,23 @@ void clearTower(){
 
 	sharedMemPtr->running = 0;
 	pthread_join(timeThread,NULL);
+	pthread_join(decisionThread,NULL);
 	pthread_join(fuelThread,NULL);
 	pthread_cond_destroy(&condTime);
 	pthread_cond_destroy(&creator);
+	pthread_cond_destroy(&condGeral);
+	pthread_cond_destroy(&condDeparture);
+	pthread_cond_destroy(&condArrival);
+	pthread_mutex_destroy(&statsMutex);
+	pthread_mutex_destroy(&timeMutex);
+	pthread_mutex_destroy(&arrivalMutex);
+	pthread_mutex_destroy(&departureMutex);
+	pthread_mutex_destroy(&fuelMutex);
+	pthread_mutex_destroy(&decisionMutex);
+
 	exit(0);
 }
+
 
 void *flightPlanner(){
 
@@ -557,7 +567,8 @@ void flightManager() {
 	char buffer[BUFSIZE];
 	char* comando = malloc(60*sizeof(char));
 	int fdNamedPipe, i , result;
-
+	
+	signal(SIGUSR2, SIG_IGN);
 	result = clock_gettime(CLOCK_REALTIME, &sharedMemPtr->Time);
     if (result == -1) {
         perror("clock_gettime");
@@ -592,8 +603,6 @@ void flightManager() {
 		else insertLogfile("WRONG COMMAND =>",comando);
 	}
 
-	unlink(PIPE_NAME);
-	remove(PIPE_NAME);
 	//PRINTAR NO LOG O RESTO DO BUFFER
 }
 
@@ -845,6 +854,8 @@ void processaArrival(char* comando){
 	if ((fuel >= eta) && (((1000* (now.tv_sec - sharedMemPtr->Time.tv_sec) + (now.tv_nsec - sharedMemPtr->Time.tv_nsec)/1000000) / valuesPtr->unidadeTempo) <= init)){
 		pthread_cond_signal(&condTime);
 		insertLogfile("NEW COMMAND =>",comando);
+		if (started == 0)
+			started = 1;
 		insereArrival(aux,nome,init,eta,fuel);
 	} 
 
@@ -874,6 +885,8 @@ void processaDeparture(char* comando){
 	if (((1000* (now.tv_sec - sharedMemPtr->Time.tv_sec) + (now.tv_nsec - sharedMemPtr->Time.tv_nsec)/1000000) / valuesPtr->unidadeTempo) <= init){
 		pthread_cond_signal(&condTime);
 		insertLogfile("NEW COMMAND =>",comando);
+		if (started == 0)
+			started = 1;
 		insereDeparture(aux,nome,init,takeoff);
 	}
 	else insertLogfile("WRONG COMMAND =>",comando);
@@ -1103,12 +1116,18 @@ void terminator(){
 
 	int i;
 	
-	printf("\nTutto finisce..\n");
+	printf("Tutto finisce..\n");
 
 	sharedMemPtr->isActive = 0;
 
+	if (started == 0)
+		kill(sharedMemPtr->towerPid, SIGUSR2);
+
 	wait(NULL);
 	showStats();
+
+	unlink(PIPE_NAME);
+	remove(PIPE_NAME);
 
 	freeArrivals(arrivalHead);
 	freeDepartures(departureHead);
@@ -1116,7 +1135,7 @@ void terminator(){
 	msgctl(messageQueueID, IPC_RMID, 0);
 
 	endLog();
-	fclose(logFile);
+	pthread_mutex_destroy(&logMutex);
 
 	shmdt(sharedMemPtr);
 	shmctl(shmid,IPC_RMID,NULL);
@@ -1155,6 +1174,7 @@ void endLog(){
 	fprintf(logFile,"DAY %d, %02d:%02d:%02d SIMULATION END\n", sharedMemPtr->structHoras->tm_mday, sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec);
 	printf("DAY %d, %02d:%02d:%02d SIMULATION END\n", sharedMemPtr->structHoras->tm_mday, sharedMemPtr->structHoras->tm_hour, sharedMemPtr->structHoras->tm_min, sharedMemPtr->structHoras->tm_sec);
 	pthread_mutex_unlock(&logMutex);
+	fclose(logFile);
 }
 
 void calculaHora(){

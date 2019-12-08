@@ -1,4 +1,2 @@
-makefile
-
 APAGAR O LIMITE VOOS, perguntar ao stor (reutilizar thread id's?)
-VER SE HA COMBUSTIVEL SUFICIENTE PARA FAZER O HOLDING
+
