@@ -165,13 +165,13 @@ pthread_cond_t creator = PTHREAD_COND_INITIALIZER;
 pthread_t timeThread;
 
 //PTHREADS ARRIVALS
-pthread_mutex_t arrivalMutex = PTHREAD_MUTEX_INITIALIZER;	/* ŃOT USED YET*/
+pthread_mutex_t arrivalMutex = PTHREAD_MUTEX_INITIALIZER;	
 pthread_cond_t condArrival = PTHREAD_COND_INITIALIZER;
 pthread_t arrivalThreads[LIMITEVOOS];
 int sizeArrivals = 0;
 
 //PTHREADS DEPARTURES
-pthread_mutex_t departureMutex = PTHREAD_MUTEX_INITIALIZER;	/* ŃOT USED YET*/
+pthread_mutex_t departureMutex = PTHREAD_MUTEX_INITIALIZER;	
 pthread_cond_t condDeparture = PTHREAD_COND_INITIALIZER;
 pthread_t departureThreads[LIMITEVOOS];
 int sizeDepartures = 0;
@@ -206,7 +206,7 @@ int main() {
 	pid_t childPid;
 
 	printf("PID para STATS / EXIT -- %d\n", getpid());
-
+	srand(time(NULL));
 	sigfillset(&blocker);
 	sigdelset(&blocker, SIGINT);
 	sigdelset(&blocker, SIGUSR1);
@@ -323,32 +323,35 @@ void *flightPlanner(){
 	        exit(EXIT_FAILURE);
 	    }
 
-		utAtual = ((1000* (now.tv_sec - sharedMemPtr->Time.tv_sec) + abs(now.tv_nsec - sharedMemPtr->Time.tv_nsec)/1000000) / valuesPtr->unidadeTempo);
 		departuresReady = contaQueue(departureQueue, utAtual);
 
 		arrivalsReady = contaQueue(arrivalQueue, utAtual);
-
-		if (arrivalsReady >= departuresReady && arrivalsReady >= 1 || (arrivalAux->nextNodePtr->prio == 1  && departureAux->nextNodePtr->tempoDesejado + valuesPtr->duracaoDescolagem + valuesPtr->intervaloDescolagens > arrivalAux->nextNodePtr->fuel)){
-
-			for (i = 0; i < arrivalsReady && i < 2; i++){
-				if (arrivals[arrivalAux->nextNodePtr->slot].check == 0){
-					strcpy(arrivals[arrivalAux->nextNodePtr->slot].ordem,"ATERRAR");
-					arrivals[arrivalAux->nextNodePtr->slot].pista = pistaA++ % 2;
-					removeQueue(arrivalAux);
-				}
-				else {
-					arrivalAux = arrivalAux ->nextNodePtr;
-					i--;
-				}
-			}
-
-			arrivalOrders(arrivalQueue, 2 + arrivalsReady);
-
-			pthread_mutex_unlock(&decisionMutex);
-			timetoWait = ValorAbsoluto(now, valuesPtr->duracaoAterragem + valuesPtr->intervaloAterragens);
-			clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME,&timetoWait,NULL);
-			pthread_mutex_lock(&decisionMutex);
+		if (arrivalsReady>= departuresReady && arrivalsReady >0 || (departureAux->nextNodePtr->tempoDesejado + valuesPtr->duracaoDescolagem + valuesPtr->intervaloDescolagens > arrivalAux->nextNodePtr->fuel)){
 			
+			if (arrivalsReady == 0){
+				timetoWait = ValorAbsoluto(sharedMemPtr->Time,arrivalQueue->nextNodePtr->tempoDesejado);
+	        	pthread_cond_timedwait(&condGeral,&decisionMutex,&timetoWait);
+			}
+			if (arrivalsReady > 0){
+				for (i = 0; i < arrivalsReady && i < 2; i++){
+					if (arrivals[arrivalAux->nextNodePtr->slot].check == 0){
+						strcpy(arrivals[arrivalAux->nextNodePtr->slot].ordem,"ATERRAR");
+						arrivals[arrivalAux->nextNodePtr->slot].pista = pistaA++ % 2;
+						removeQueue(arrivalAux);
+					}
+					else {
+						arrivalAux = arrivalAux ->nextNodePtr;
+						i--;
+					}
+				}
+
+				arrivalOrders(arrivalQueue, 2 + arrivalsReady);
+
+				pthread_mutex_unlock(&decisionMutex);
+				timetoWait = ValorAbsoluto(now, valuesPtr->duracaoAterragem + valuesPtr->intervaloAterragens);
+				clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME,&timetoWait,NULL);
+				pthread_mutex_lock(&decisionMutex);
+			}
 		}
 
 		else if (departuresReady > arrivalsReady && departuresReady >= 1){
@@ -433,7 +436,7 @@ void arrivalOrders(queuePtr arrivalQueue, int num){
 			strcpy(arrivals[arrivalAux->nextNodePtr->slot].ordem,"HOLDING");
 			arrivals[arrivalAux->nextNodePtr->slot].fuel = arrivalAux->nextNodePtr->fuel;
 			sharedMemPtr->estatisticas.numeroHoldings++;
-			arrivals[arrivalAux->nextNodePtr->slot].duration = valuesPtr->minHolding;
+			arrivals[arrivalAux->nextNodePtr->slot].duration = valuesPtr->minHolding + rand() % (valuesPtr->maxHolding - valuesPtr->minHolding);
 			insereQueue(arrivalQueue, arrivalAux->nextNodePtr->tempoDesejado + valuesPtr->minHolding, arrivalAux->nextNodePtr->fuel, arrivalAux->nextNodePtr->prio, arrivalAux->nextNodePtr->slot);
 			removeQueue(arrivalAux);
 		}
@@ -1025,8 +1028,6 @@ void *ArrivalFlight(void *flight){
 	        perror("clock_gettime");
 	        exit(EXIT_FAILURE);
 	    }
-
-	utAtual = ((1000* (now.tv_sec - sharedMemPtr->Time.tv_sec) + abs(now.tv_nsec - sharedMemPtr->Time.tv_nsec)/1000000) / valuesPtr->unidadeTempo);
 	
 	if (sharedMemPtr->totalArrivals == 0 && sharedMemPtr->totalDepartures == 0 && sharedMemPtr->isActive == 0)
 		kill(sharedMemPtr->towerPid, SIGUSR2);
