@@ -4,7 +4,7 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include <sys/types.h>
-#include <sys/ipc.h>
+#include <sys/ipc.h> 
 #include <sys/shm.h>
 #include <sys/fcntl.h>
 #include <semaphore.h> 
@@ -15,8 +15,8 @@
 #include <sys/msg.h>
 #include <errno.h>
 #include <signal.h>
-#include <fcntl.h>
-#include <string.h>
+#include <fcntl.h>  
+#include <string.h> 
 #include <sys/stat.h>
 #include "LinkedList.h" 
 
@@ -24,9 +24,10 @@
 #define CINQ 50
 #define CEM 100
 #define PIPE_NAME "input_pipe"
-#define ARRIVAL_PATTERN  "ARRIVAL TP[0-9]+ init: [0-9]+ eta: [0-9]+ fuel: [0-9]+"
-#define DEPARTURE_PATTERN "DEPARTURE TP[0-9]+ init: [0-9]+ takeoff: [0-9]+"
+#define ARRIVAL_PATTERN  "ARRIVAL TP[0-9]+ init: [0-9]+ eta: [0-9]+ fuel: [0-9]+$"
+#define DEPARTURE_PATTERN "DEPARTURE TP[0-9]+ init: [0-9]+ takeoff: [0-9]+$"
 #define LIMITEVOOS 1000
+#define BUFSIZE 10000
 
 
 typedef struct messageQueue* messageQueuePtr;
@@ -109,6 +110,7 @@ typedef struct baseValuesStruct{
 void inicializaStats();
 void controlTower();
 void flightManager();
+void processaComando(char* comando);
 void readConfig();
 void terminator();
 void calculaHora();
@@ -289,145 +291,6 @@ void clearTower(){
 	pthread_cond_destroy(&creator);
 	exit(0);
 }
-
-/*
-	int unidadeTempo;
-	int duracaoDescolagem;
-	int intervaloDescolagens;
-	int duracaoAterragem;
-	int intervaloAterragens;
-	int minHolding;
-	int maxHolding;
-	int maxPartidas;
-	int maxChegadas;
-	arrivals[reply->id].ordem;
-
-
-
-void *flightPlanner(){
-	int tempo=0, tempo_sec=0, tempo_nsec=0;
-	int selection = 0;
-	struct timespec timetoWait = {0};
-	struct timespec check = {0};
-	int result;
-	replyQueuePtr reply = criaReplyStruct();
-	printf("Escolha feita\n");
-	while(isActive){
-
-		pthread_mutex_lock(&decisionMutex);
-
-		if (arrivalQueue->nextNodePtr == NULL && departureQueue == NULL)
-			pthread_cond_wait(&condGeral,&decisionMutex);
-		
-		//OPCAO 1- ARRIVALS TD < DEPARTURE TD  -- ARRIVALS COM APENAS 1 FLIGHT
-		//OPCAO 2- ARRIVALS TD < DEPARTURE TD  OU ARRIVALS MAIOR MAS 2 VOOS EM ESPERA E DEPARTURE APENAS 1 -- ARRIVALS COM 2 FLIGHTS
-		// OPCAO 3 - DEPARTURE TD <ARRIVALS -- DEPARTURE 1 FLIGHT
-		//OPCAO 4 DEPARTURE TD < ARRIVALS TD OU DEPARTURE MAIOR MAS 2 VOOS EM ESPERA E ARRIVALS SO 1 -- DEPARTURE 2 FLIGHTS
-		if (departureQueue->nextNodePtr ==  NULL){
-			tempo = arrivalQueue->nextNodePtr->tempoDesejado * valuesPtr->unidadeTempo;
-			selection = 1;
-		}
-		else if (arrivalQueue->nextNodePtr == NULL){
-			tempo = departureQueue->nextNodePtr->tempoDesejado * valuesPtr->unidadeTempo;
-			selection = 3;
-		}
-
-		else if(arrivalQueue->nextNodePtr->tempoDesejado <= departureQueue->nextNodePtr->tempoDesejado){
-			if (arrivalQueue->nextNodePtr->nextNodePtr == NULL && departureQueue->nextNodePtr->nextNodePtr != NULL){
-				tempo = departureQueue->nextNodePtr->tempoDesejado * valuesPtr->unidadeTempo;
-				selection = 4;
-			}
-			else{
-				tempo = arrivalQueue->nextNodePtr->tempoDesejado * valuesPtr->unidadeTempo;
-				if (arrivalQueue->nextNodePtr->nextNodePtr != NULL){
-					selection = 2;
-				}
-				else selection =1;
-			}
-		}
-
-		else if(departureQueue->nextNodePtr->tempoDesejado < arrivalQueue->nextNodePtr->tempoDesejado ){
-			if (departureQueue->nextNodePtr->nextNodePtr == NULL && arrivalQueue->nextNodePtr->nextNodePtr != NULL){
-				tempo = arrivalQueue->nextNodePtr->tempoDesejado * valuesPtr->unidadeTempo;
-				selection = 2;
-			}
-			else{
-				tempo = departureQueue->nextNodePtr->tempoDesejado * valuesPtr->unidadeTempo;
-				if (departureQueue->nextNodePtr->nextNodePtr != NULL){
-					selection = 4;
-				}
-				else selection = 2;
-			}
-		}
-		printf("HERE1!\n");
-		tempo_sec = tempo/1000;
-        tempo_nsec = (tempo%1000)*1000000;
-        printf("HERE2!\n");
-        timetoWait.tv_sec = sharedMemPtr->Time.tv_sec + tempo_sec + (tempo_nsec + sharedMemPtr->Time.tv_nsec)/1000000000;
-        timetoWait.tv_nsec = (tempo_nsec + sharedMemPtr->Time.tv_nsec)%1000000000;
-
-		result = pthread_cond_timedwait(&condGeral,&decisionMutex,&timetoWait);
-	    if (result !=0  && result == ETIMEDOUT) {
-	        fprintf(stderr, "%s\n", strerror(result));
-	        exit(EXIT_FAILURE);
-	    }
-	    printf("Escolha feita");
-
-	    result = clock_gettime(CLOCK_REALTIME, &check);
-		    if (result == -1) {
-	        perror("clock_gettime");
-	        exit(EXIT_FAILURE);
-	    }
-
-	    printf("%s-%s\n",ctime(&timetoWait.tv_sec),ctime(&check.tv_sec));
-
-	    if (difftime(timetoWait.tv_sec,check.tv_sec) < 0){
-	    	printf("WELL FUCK\n");
-	    	continue;
-	    }
-
-		printf("STARTING ORDEM\n");
-	    if (selection == 1 || selection == 2){
-	    	strcpy(arrivals[(arrivalQueue->nextNodePtr->slot)].ordem,"ATERRAR");
-	    	if (selection == 2)
-	    		strcpy(arrivals[(arrivalQueue->nextNodePtr->nextNodePtr->slot)].ordem,"ATERRAR");
-
-	    	tempo_sec = (valuesPtr->duracaoAterragem + valuesPtr->intervaloAterragens) * valuesPtr->unidadeTempo /1000;
-	    	tempo_nsec = ((valuesPtr->duracaoAterragem + valuesPtr->intervaloAterragens) * valuesPtr->unidadeTempo %1000) *1000000;
-
-	    	timetoWait.tv_sec = sharedMemPtr->Time.tv_sec + tempo_sec + (tempo_nsec + sharedMemPtr->Time.tv_nsec) /1000000000;
-        	timetoWait.tv_nsec = (tempo_nsec + sharedMemPtr->Time.tv_nsec) %1000000000;
-
-	    	result = clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME,&timetoWait,NULL);
-			if (result !=0 && result !=EINVAL){
-				fprintf(stderr, "%s\n", strerror(result));
-				exit(EXIT_FAILURE);
-			}
-	    }
-	    if (selection == 3 || selection == 4){
-	    	strcpy(departures[(departureQueue->nextNodePtr->slot)].ordem,"PARTIR");
-	    	if (selection == 4)
-	    		strcpy(departures[(departureQueue->nextNodePtr->nextNodePtr->slot)].ordem,"PARTIR");
-
-	    	tempo_sec = (valuesPtr->duracaoDescolagem + valuesPtr->intervaloDescolagens) * valuesPtr->unidadeTempo /1000;
-	    	tempo_nsec = ((valuesPtr->duracaoDescolagem + valuesPtr->intervaloDescolagens) * valuesPtr->unidadeTempo %1000) *1000000;
-
-	    	timetoWait.tv_sec = sharedMemPtr->Time.tv_sec + tempo_sec + (tempo_nsec + sharedMemPtr->Time.tv_nsec) /1000000000;
-        	timetoWait.tv_nsec = (tempo_nsec + sharedMemPtr->Time.tv_nsec) %1000000000;
-
-	    	result = clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME,&timetoWait,NULL);
-			if (result !=0 && result !=EINVAL){
-				fprintf(stderr, "%s\n", strerror(result));
-				exit(EXIT_FAILURE);
-			}
-	    }
-	    arrivals[reply->id].ordem;
-		pthread_mutex_unlock(&decisionMutex);
-
-	}
-}
-*/
-
 
 void *flightPlanner(){
 
@@ -625,8 +488,6 @@ int newDeparture(messageQueuePtr mensagem, int departuresHelper){
 	insereQueue(departureQueue,mensagem->tempoDesejado,mensagem->fuel,0,departuresHelper);
 	pthread_cond_signal(&condGeral);
 
-	//printf("NEW DEPARTURE -- td: %d\n", mensagem->tempoDesejado);
-
 	reply->messageType = 4;
 	reply->id = departuresHelper;
 
@@ -693,8 +554,8 @@ void initializeSlots(){
 
 void flightManager() {
 
-	char* comando = malloc(CINQ*sizeof(char));
-	char letra;
+	char buffer[BUFSIZE];
+	char* comando = malloc(60*sizeof(char));
 	int fdNamedPipe, i , result;
 
 	result = clock_gettime(CLOCK_REALTIME, &sharedMemPtr->Time);
@@ -702,7 +563,6 @@ void flightManager() {
         perror("clock_gettime");
         exit(EXIT_FAILURE);
     }
-
 
 	logFile = fopen("Logfile.txt", "w");
 
@@ -720,18 +580,26 @@ void flightManager() {
 
 		i = 0;
 
-		read(fdNamedPipe,&letra,1);
+		read(fdNamedPipe,&buffer,BUFSIZE);
+		comando = strtok(buffer,"\n");
 
-		while (letra != '\n') {
-			comando[i++] = letra;
-			read(fdNamedPipe,&letra,1);	
-		}
+		if (comando != NULL){
+			processaComando(comando);
 		
-		comando[i] = '\0';
+			while((comando = strtok(NULL,"\n")) != NULL)
+				processaComando(comando);
+		}
+		else insertLogfile("WRONG COMMAND =>",comando);
+	}
 
-		//if (strcmp(comando,"exit") == 0) isActive = 0;
-			
-		if ((comando[0] == 'A') && (confirmaSintaxe(comando, ARRIVAL_PATTERN) == 1)){
+	unlink(PIPE_NAME);
+	remove(PIPE_NAME);
+	//PRINTAR NO LOG O RESTO DO BUFFER
+}
+
+void processaComando(char* comando){
+
+	if ((comando[0] == 'A') && (confirmaSintaxe(comando, ARRIVAL_PATTERN) == 1)){
 
 			processaArrival(comando);
 			//printArrivals(arrivalHead);
@@ -744,13 +612,7 @@ void flightManager() {
 		}
 
 		else insertLogfile("WRONG COMMAND =>",comando);
-	}
-
-	unlink(PIPE_NAME);
-	remove(PIPE_NAME);
-	//PRINTAR NO LOG O RESTO DO BUFFER
 }
-
 
 void criaSharedMemory(){
 
