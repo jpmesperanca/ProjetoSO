@@ -185,7 +185,6 @@ pthread_cond_t condGeral = PTHREAD_COND_INITIALIZER;
 //STATS
 pthread_mutex_t statsMutex = PTHREAD_MUTEX_INITIALIZER;
 
-int PISTAS[4];
 int started = 0;
 
 arrivalPtr arrivalHead;
@@ -281,16 +280,21 @@ void controlTower() {
 }
 
 void clearTower(){
-
+	printf("here|\n");
 	sharedMemPtr->running = 0;
+	printf("here|\n");
 	pthread_join(timeThread,NULL);
+	printf("here|\n");
 	pthread_join(decisionThread,NULL);
+	printf("here|\n");
 	pthread_join(fuelThread,NULL);
+	printf("here|\n");
 	pthread_cond_destroy(&condTime);
 	pthread_cond_destroy(&creator);
 	pthread_cond_destroy(&condGeral);
 	pthread_cond_destroy(&condDeparture);
 	pthread_cond_destroy(&condArrival);
+	printf("here|\n");
 	pthread_mutex_destroy(&statsMutex);
 	pthread_mutex_destroy(&timeMutex);
 	pthread_mutex_destroy(&arrivalMutex);
@@ -304,7 +308,7 @@ void clearTower(){
 
 void *flightPlanner(){
 
-	int utAtual, arrivalsReady, departuresReady, i,count = 0, pistaD = 0,pistaA = 0;
+	int utAtual, arrivalsReady, departuresReady, i,count = 0, pistaD = 0,pistaA = 0, lastflight = 2;
 	int tempo, tempo_sec, tempo_nsec, result;
 	queuePtr arrivalAux = arrivalQueue;
 	queuePtr departureAux = arrivalQueue;
@@ -321,10 +325,10 @@ void *flightPlanner(){
 	    }
 
 	    utAtual = ((1000* (now.tv_sec - sharedMemPtr->Time.tv_sec) + abs(now.tv_nsec - sharedMemPtr->Time.tv_nsec)/1000000) / valuesPtr->unidadeTempo);
-		departuresReady = contaQueue(departureQueue, utAtual);
-		arrivalsReady = contaQueue(arrivalQueue, utAtual);
+		departuresReady = contaQueue(departureQueue, utAtual); printf("%d\n",departuresReady);
+		arrivalsReady = contaQueue(arrivalQueue, utAtual); printf("a%d\n",arrivalsReady);
 		
-		if ((arrivalsReady>= departuresReady && arrivalsReady >0) || (departureAux->nextNodePtr->tempoDesejado + valuesPtr->duracaoDescolagem + valuesPtr->intervaloDescolagens > arrivalAux->nextNodePtr->fuel)){
+		if ((arrivalsReady>= departuresReady && arrivalsReady >0) || (departureAux->nextNodePtr != NULL && arrivalAux->nextNodePtr !=NULL && departureAux->nextNodePtr->tempoDesejado + valuesPtr->duracaoDescolagem + valuesPtr->intervaloDescolagens > arrivalAux->nextNodePtr->fuel)){
 			
 			if (arrivalsReady == 0){
 				timetoWait = ValorAbsoluto(sharedMemPtr->Time,arrivalQueue->nextNodePtr->tempoDesejado);
@@ -336,17 +340,23 @@ void *flightPlanner(){
 						strcpy(arrivals[arrivalAux->nextNodePtr->slot].ordem,"ATERRAR");
 						arrivals[arrivalAux->nextNodePtr->slot].pista = pistaA++ % 2;
 						removeQueue(arrivalAux);
+						count++;
+
 					}
 					else {
 						arrivalAux = arrivalAux ->nextNodePtr;
 						i--;
 					}
 				}
-
-				arrivalOrders(arrivalQueue, 2 + arrivalsReady);
+				arrivalOrders(arrivalQueue, 5 - count);
 
 				pthread_mutex_unlock(&decisionMutex);
-				timetoWait = ValorAbsoluto(now, valuesPtr->duracaoAterragem + valuesPtr->intervaloAterragens);
+				if(lastflight == 1) // LAST ARRIVALS
+					timetoWait = ValorAbsoluto(now, valuesPtr->duracaoAterragem + valuesPtr->intervaloAterragens);
+				else if(lastflight == 0) // LAST DEPARTURE
+					timetoWait = ValorAbsoluto(now, valuesPtr->duracaoAterragem);
+				else timetoWait = ValorAbsoluto(now, valuesPtr->duracaoAterragem);
+				lastflight = 1;
 				clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME,&timetoWait,NULL);
 				pthread_mutex_lock(&decisionMutex);
 			}
@@ -374,6 +384,13 @@ void *flightPlanner(){
 			arrivalOrders(arrivalQueue, 5);
 
 			pthread_mutex_unlock(&decisionMutex);
+
+			if(lastflight == 1) // LAST ARRIVALS
+					timetoWait = ValorAbsoluto(now, valuesPtr->duracaoDescolagem);
+			else if(lastflight == 0) // LAST DEPARTURE
+				timetoWait = ValorAbsoluto(now, valuesPtr->duracaoDescolagem + valuesPtr->intervaloDescolagens);
+			else timetoWait = ValorAbsoluto(now, valuesPtr->duracaoDescolagem);
+			lastflight = 0;
 			timetoWait = ValorAbsoluto(now, valuesPtr->duracaoDescolagem + valuesPtr->intervaloDescolagens);
 			clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME,&timetoWait,NULL);
 			pthread_mutex_lock(&decisionMutex);
@@ -405,8 +422,11 @@ void *flightPlanner(){
 		        }
 			}
 
-			else pthread_cond_wait(&condGeral,&decisionMutex);
-
+			else{
+				printf("waiting\n"); 
+				pthread_cond_wait(&condGeral,&decisionMutex);
+				printf("waiting\n");
+			}
 		}
 		pthread_mutex_unlock(&decisionMutex);
 	}
@@ -419,6 +439,7 @@ void arrivalOrders(queuePtr arrivalQueue, int num){
 	int count = 0;
 
 	while(arrivalAux->nextNodePtr != NULL){
+		//printf("%d\n",arrivals[arrivalAux->nextNodePtr->slot].check);
 		if (count< num){
 			strcpy(arrivals[arrivalAux->nextNodePtr->slot].ordem,"WAIT");
 			arrivals[arrivalAux->nextNodePtr->slot].duration = 1;
@@ -434,7 +455,7 @@ void arrivalOrders(queuePtr arrivalQueue, int num){
 			strcpy(arrivals[arrivalAux->nextNodePtr->slot].ordem,"HOLDING");
 			sharedMemPtr->estatisticas.numeroHoldings++;
 			arrivals[arrivalAux->nextNodePtr->slot].duration = valuesPtr->minHolding + rand() % (valuesPtr->maxHolding - valuesPtr->minHolding);
-			insereQueue(arrivalQueue, arrivalAux->nextNodePtr->tempoDesejado + valuesPtr->minHolding, arrivalAux->nextNodePtr->fuel, arrivalAux->nextNodePtr->prio, arrivalAux->nextNodePtr->slot);
+			insereQueue(arrivalQueue, arrivalAux->nextNodePtr->tempoDesejado + arrivals[arrivalAux->nextNodePtr->slot].duration, arrivalAux->nextNodePtr->fuel, arrivalAux->nextNodePtr->prio, arrivalAux->nextNodePtr->slot);
 			removeQueue(arrivalAux);
 		}
 		else arrivalAux = arrivalAux->nextNodePtr;
