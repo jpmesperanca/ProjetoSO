@@ -1,10 +1,8 @@
-Simulador: Simulador.o LinkedList.o
+Simulador: Simulador.o LinkedList.h
 	gcc -Wall -pthread Simulador.o LinkedList.o -o Simulador -lrt
 
 Simulador.o: Simulador.c LinkedList.h
-	gcc -c Simulador.c LinkedList.h -pthread
+	gcc -c Simulador.c
 
-LinkedList.o:	LinkedList.c
-	gcc -c LinkedList.c -pthread
 clean:
 	$(RM) Simulador

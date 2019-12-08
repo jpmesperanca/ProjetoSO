@@ -1,5 +1,2 @@
-makefile
-LER MAIS DO QUE UMA LETRA DE CADA VEZ
-
 APAGAR O LIMITE VOOS, perguntar ao stor (reutilizar thread id's?)
-VER SE HA COMBUSTIVEL SUFICIENTE PARA FAZER O HOLDING
+

@@ -189,11 +189,12 @@ void removeDeparture(departurePtr departureHead){
 
 
 departurePtr departureCopy(departurePtr aux){
-    departurePtr copy;
+    departurePtr copy= criaDepartures();
     copy->nome=strdup(aux->nome);
     copy->init=aux->init;
     copy->takeoff=aux->takeoff;
     copy->nextNodePtr=NULL;
+
     return copy;
 }
 
@@ -221,7 +222,7 @@ void insereQueue(queuePtr queueHead, int tempoDesejado, int fuel, int prio, int 
     queuePtr aux = queueHead;
 
     if (prio != 1){
-	    while((aux->nextNodePtr != NULL) && (aux->nextNodePtr->tempoDesejado < tempoDesejado)){
+	    while((aux->nextNodePtr != NULL) && (aux->nextNodePtr->tempoDesejado <= tempoDesejado)){
 	        aux = aux->nextNodePtr;
 	    }
 	}
@@ -258,10 +259,12 @@ void removeQueue(queuePtr queueHead){
 
     queuePtr aux = queueHead->nextNodePtr->nextNodePtr;
 
-   free(queueHead);
+    free(queueHead->nextNodePtr);
 
     queueHead->nextNodePtr = aux;
+
 }
+
 
 void printDepartureQueue(queuePtr queueHead){
 
@@ -285,4 +288,20 @@ void printArrivalQueue(queuePtr queueHead){
             aux = aux->nextNodePtr;
         } 
     printf("------\n");
+}
+
+int contaQueue(queuePtr queueHead, int utAtual){
+
+    int count = 0;
+    queuePtr aux = queueHead->nextNodePtr;
+
+    while (aux != NULL){
+        if (aux->tempoDesejado <= utAtual)
+            count++;
+        else
+            return count;
+
+        aux= aux->nextNodePtr;
+    }
+    return count;
 }
